@@ -278,6 +278,30 @@ body:not(.authed) .topbar, body:not(.authed) .wrap{display:none;}
 .acct{display:flex;align-items:center;gap:8px;}
 .acct button{border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;border-radius:6px;padding:4px 9px;font-size:11.5px;cursor:pointer;}
 #syncStatus{font-size:10.5px;color:rgba(255,255,255,.75);}
+
+/* ---------- Sesi kolaboratif (Collaborative Shared Session) ---------- */
+.session-live{background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;}
+.session-live.stale{border-left-color:var(--amber);}
+.sl-left{display:flex;flex-direction:column;gap:3px;min-width:160px;}
+.sl-tag{display:inline-block;background:var(--accent);color:#fff;font-size:10px;font-weight:800;letter-spacing:.09em;padding:2px 8px;border-radius:4px;width:fit-content;}
+.session-live.stale .sl-tag{background:var(--amber);}
+.sl-title{font-size:13.5px;font-weight:700;color:var(--ink);}
+.sl-mid{display:flex;gap:24px;flex-wrap:wrap;flex:1;}
+.sl-field{display:flex;flex-direction:column;gap:2px;font-size:12px;}
+.sl-field label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);}
+.sl-field b{font-weight:700;color:var(--ink);}
+.sl-participants{display:flex;flex-wrap:wrap;gap:6px;}
+.sl-dot{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;background:#fff;border:1px solid var(--border);border-radius:99px;padding:2px 8px;}
+.sl-dot i{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;}
+.sl-dot.owner{font-weight:700;}
+.sl-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.sl-sync{font-size:10.5px;font-weight:700;letter-spacing:.05em;padding:3px 9px;border-radius:99px;background:var(--green-bg);color:var(--green);}
+.sl-sync[data-state="SYNCING"]{background:var(--amber-bg);color:var(--amber);}
+.sl-sync[data-state="OFFLINE"]{background:var(--gray-bg);color:var(--gray);}
+.sl-sync[data-state="CONFLICT"]{background:var(--red-bg);color:var(--red);}
+.sl-select{border:1px solid var(--border-strong);border-radius:6px;padding:5px 8px;font-size:12px;background:#fff;color:var(--ink);}
+.session-offlinewarn{background:var(--amber-bg);color:#7a5300;border:1px solid #f0d38a;border-radius:8px;padding:8px 14px;font-size:12.5px;margin:-8px 0 16px;}
+.disabled-follow{pointer-events:none;opacity:.5;}
 </style>
 </head>
 <body>
@@ -310,6 +334,9 @@ body:not(.authed) .topbar, body:not(.authed) .wrap{display:none;}
 </div>
 
 <div class="wrap">
+
+  <div id="sessionBanner" style="display:none"></div>
+  <div id="sessionOfflineWarn" class="session-offlinewarn" style="display:none"></div>
 
   <div class="helpbox">
     <strong>Cara kerja:</strong> data dikelompokkan per NOPEN, QTY dijumlahkan (harus sama persis), CBM dijumlahkan (toleransi 0.5). Pemeriksaan dilakukan <strong>dua arah</strong> (SCM↔IOR untuk Adidas, SCM↔DRR untuk Nike) dan NOPEN yang tidak ketemu di periode berjalan ditelusuri ke <strong>seluruh histori data</strong>.
@@ -416,6 +443,17 @@ body:not(.authed) .topbar, body:not(.authed) .wrap{display:none;}
   </div>
 
   <footer class="appfoot">Rekonsiliasi Inbound · file Excel diproses 100% di browser · catatan/case disinkronkan ke server bersama</footer>
+</div>
+
+<!-- MODAL: sesi kolaboratif ditemukan -->
+<div class="modal-overlay" id="sessionModalOverlay">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head">
+      <div><h3>Sesi Aktif Ditemukan</h3></div>
+      <button class="close-btn" id="sessionModalClose">✕</button>
+    </div>
+    <div class="modal-body" id="sessionModalBody"></div>
+  </div>
 </div>
 
 <!-- MODAL -->
@@ -2032,6 +2070,31 @@ async function pullCasesFromSupabase(){
   }
 }
 
+/* Collaborative Shared Session, TEST 5: perubahan case dari user lain harus
+   terlihat realtime, bukan hanya saat login/buka panel berikutnya. Channel ini
+   TERPISAH dari SessionMgr (case tidak terikat ke satu sesi tertentu -- sudah
+   berlaku global lintas periode sejak sebelum fitur sesi ini ada), dan hanya
+   dipasang sekali per login. Debounce kecil supaya restore/import besar
+   (banyak perubahan sekaligus) tidak memicu puluhan pull berturutan. */
+var casesRealtimeChannel = null, casesRealtimeDebounce = null;
+function subscribeCasesRealtime(){
+  if (!supaReady || !currentUser || casesRealtimeChannel) return;
+  casesRealtimeChannel = supa.channel("inbound-cases-realtime")
+    .on("postgres_changes", {event:"*", schema:"public", table:"inbound_cases"}, function(){
+      clearTimeout(casesRealtimeDebounce);
+      casesRealtimeDebounce = setTimeout(function(){
+        pullCasesFromSupabase().then(function(){
+          if (window.__rekonInboundRefresh) window.__rekonInboundRefresh();
+        });
+      }, 500);
+    })
+    .subscribe();
+}
+function unsubscribeCasesRealtime(){
+  if (casesRealtimeChannel){ try{ supa.removeChannel(casesRealtimeChannel); }catch(e){} casesRealtimeChannel = null; }
+  clearTimeout(casesRealtimeDebounce);
+}
+
 (function pasangSinkronCases(){
   var _save = APP.cases.save, _remove = APP.cases.remove;
   APP.cases.save = function(brand, nopen, fields, context){
@@ -2049,6 +2112,260 @@ async function pullCasesFromSupabase(){
   };
 })();
 
+/* ====================== Collaborative Shared Session ======================
+   Layer BARU di atas alur existing (files / RESULT / CASES). Modul ini TIDAK
+   menyentuh mesin rekonsiliasi (APP.engine), normalisasi (APP.reader/schema),
+   atau logika case (APP.cases) sama sekali -- ia hanya:
+     1) menyimpan snapshot RESULT yang SUDAH DIHITUNG oleh run() supaya
+        follower bisa membukanya tanpa upload ulang & tanpa menjalankan
+        ulang mesin rekonsiliasi, dan
+     2) menyiarkan kehadiran (presence) + event tampilan via Supabase Realtime.
+   Business logic (run(), renderResults(), CASES.*) dipanggil oleh modul ini
+   lewat hook yang sudah ada -- bukan sebaliknya. Lihat pemasangan hook di
+   app-ui-logic (init(), run(), openCase(), saveCase(), handler filter/tab). */
+var WORKSPACE_ID = "default";
+var SESSION_TOOL = "rekonsiliasi_inbound";
+var SNAPSHOT_BUCKET = "inbound-snapshots";
+var INLINE_SNAPSHOT_LIMIT = 3 * 1024 * 1024;   // 3MB: di bawah ini simpan sbg jsonb, di atas pakai Storage
+var SESSION_STALE_MS = 2 * 60 * 1000;          // 2 menit tanpa heartbeat = "owner tidak aktif"
+var HEARTBEAT_MS = 45 * 1000;
+var LAST_JOIN_KEY = "rekon_inbound_last_session_id"; // localStorage: hanya cache/fallback, BUKAN source of truth
+
+var SessionMgr = (function(){
+  var current = null;         // baris sesi (dari server) yang sedang dimiliki/diikuti
+  var role = null;            // 'OWNER' | 'FOLLOWER' | null
+  var followMode = "data";    // 'data' | 'view' -- hanya relevan untuk FOLLOWER
+  var channel = null;
+  var heartbeatTimer = null;
+  var listeners = [];
+
+  function on(fn){ listeners.push(fn); }
+  function emit(evt){ listeners.forEach(function(fn){ try{ fn(evt); }catch(e){ console.warn(e); } }); }
+
+  /* --- structured-clone ringan: RESULT dari mesin rekonsiliasi berisi Set/Map/Date
+     bersarang (mis. SO_CMP_SET, months Map, TGL Date) yang TIDAK aman di-JSON biasa.
+     Fungsi ini generik -- tidak perlu tahu bentuk persis objek engine, sehingga
+     mesin rekonsiliasi tidak perlu diubah sama sekali. */
+  function snapEncode(value, seen){
+    seen = seen || new WeakSet();
+    if (value === null || typeof value !== "object") return value;
+    if (value instanceof Date) return {__t:"Date", v:value.toISOString()};
+    if (value instanceof Set) return {__t:"Set", v:Array.from(value).map(function(x){ return snapEncode(x, seen); })};
+    if (value instanceof Map) return {__t:"Map", v:Array.from(value.entries()).map(function(e){ return [snapEncode(e[0], seen), snapEncode(e[1], seen)]; })};
+    if (seen.has(value)) return null;
+    seen.add(value);
+    if (Array.isArray(value)) return value.map(function(x){ return snapEncode(x, seen); });
+    var out = {};
+    Object.keys(value).forEach(function(k){ out[k] = snapEncode(value[k], seen); });
+    return out;
+  }
+  function snapDecode(value){
+    if (value === null || typeof value !== "object") return value;
+    if (Array.isArray(value)) return value.map(snapDecode);
+    if (value.__t === "Date") return new Date(value.v);
+    if (value.__t === "Set") return new Set((value.v||[]).map(snapDecode));
+    if (value.__t === "Map") return new Map((value.v||[]).map(function(e){ return [snapDecode(e[0]), snapDecode(e[1])]; }));
+    var out = {};
+    Object.keys(value).forEach(function(k){ out[k] = snapDecode(value[k]); });
+    return out;
+  }
+
+  async function getActiveSession(){
+    if (!supaReady || !currentUser) return null;
+    try{
+      var res = await supa.from("inbound_sessions").select("*")
+        .eq("workspace_id", WORKSPACE_ID).eq("tool_name", SESSION_TOOL)
+        .eq("status", "ACTIVE").order("last_activity_at", {ascending:false}).limit(1).maybeSingle();
+      if (res.error) throw res.error;
+      return res.data || null;
+    }catch(e){ console.warn("Gagal ambil sesi aktif:", e); return null; }
+  }
+
+  async function fetchSession(id){
+    if (!supaReady) return null;
+    try{
+      var res = await supa.from("inbound_sessions").select("*").eq("id", id).maybeSingle();
+      if (res.error) throw res.error;
+      return res.data || null;
+    }catch(e){ console.warn("Gagal ambil sesi:", e); return null; }
+  }
+
+  async function saveSnapshot(resultObj, meta){
+    if (!supaReady || !currentUser) return null;
+    var encoded = snapEncode(resultObj);
+    var json = JSON.stringify(encoded);
+    var bytes = json.length;
+    var row = {
+      workspace_id: WORKSPACE_ID, tool_name: SESSION_TOOL, status: "ACTIVE",
+      owner_id: currentUser.id, owner_name: currentUser.email,
+      period_key: (meta && meta.periodKey) || null, source_names: (meta && meta.sourceNames) || null,
+      last_activity_at: new Date().toISOString(), updated_at: new Date().toISOString()
+    };
+    var isMine = current && current.owner_id === currentUser.id;
+    var targetId = isMine ? current.id : null;
+    if (bytes <= INLINE_SNAPSHOT_LIMIT){
+      row.result_data = encoded; row.snapshot_path = null; row.result_path = null;
+    }else{
+      var path = WORKSPACE_ID + "/" + (targetId || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))) + ".json";
+      var blob = new Blob([json], {type:"application/json"});
+      var up = await supa.storage.from(SNAPSHOT_BUCKET).upload(path, blob, {upsert:true, contentType:"application/json"});
+      if (up.error) throw up.error;
+      row.result_data = null; row.snapshot_path = path; row.result_path = path;
+    }
+    var res;
+    if (isMine){
+      row.version = (current.version || 1) + 1;
+      res = await supa.from("inbound_sessions").update(row).eq("id", current.id).select().single();
+    }else{
+      row.version = 1;
+      row.audit = [{at:new Date().toISOString(), what:"Sesi dibuat", by:currentUser.email}];
+      res = await supa.from("inbound_sessions").insert(row).select().single();
+    }
+    if (res.error) throw res.error;
+    current = res.data; role = "OWNER"; followMode = "data";
+    try{ window.localStorage.setItem(LAST_JOIN_KEY, current.id); }catch(e){}
+    await subscribeRealtime(current.id);
+    broadcast("DATA_UPDATED", {sessionId: current.id, version: current.version});
+    startHeartbeat();
+    return current;
+  }
+
+  async function loadSnapshot(sessionRow){
+    var encoded;
+    if (sessionRow.result_data){
+      encoded = sessionRow.result_data;
+    }else if (sessionRow.snapshot_path){
+      var dl = await supa.storage.from(SNAPSHOT_BUCKET).download(sessionRow.snapshot_path);
+      if (dl.error) throw dl.error;
+      var text = await dl.data.text();
+      encoded = JSON.parse(text);
+    }else{
+      throw new Error("Sesi ini belum memiliki hasil (owner belum menjalankan rekonsiliasi).");
+    }
+    return snapDecode(encoded);
+  }
+
+  async function joinSession(sessionRow){
+    leaveSession();
+    current = sessionRow; role = "FOLLOWER"; followMode = "data";
+    try{ window.localStorage.setItem(LAST_JOIN_KEY, current.id); }catch(e){}
+    await subscribeRealtime(current.id);
+    startHeartbeat();
+    return current;
+  }
+
+  /* Dipakai saat OWNER login lagi / refresh dan sesinya sendiri masih ACTIVE di
+     server (TEST 8) -- beda dari joinSession() karena role tetap OWNER, bukan
+     FOLLOWER, sehingga heartbeat & broadcastViewState tetap berjalan sebagai
+     pemilik sesi. */
+  async function reclaimSession(sessionRow){
+    leaveSession();
+    current = sessionRow; role = "OWNER"; followMode = "data";
+    try{ window.localStorage.setItem(LAST_JOIN_KEY, current.id); }catch(e){}
+    await subscribeRealtime(current.id);
+    startHeartbeat();
+    return current;
+  }
+
+  function leaveSession(){
+    if (channel){ try{ supa.removeChannel(channel); }catch(e){} channel = null; }
+    stopHeartbeat();
+    current = null; role = null;
+    try{ window.localStorage.removeItem(LAST_JOIN_KEY); }catch(e){}
+  }
+
+  async function updateHeartbeat(){
+    if (!current || !supaReady || !currentUser || role !== "OWNER") return;
+    try{
+      var res = await supa.from("inbound_sessions").update({last_activity_at:new Date().toISOString()}).eq("id", current.id).select().single();
+      if (!res.error && res.data) current = res.data;
+    }catch(e){ /* bukan kritis, coba lagi di detak berikutnya */ }
+  }
+  function startHeartbeat(){ stopHeartbeat(); heartbeatTimer = setInterval(updateHeartbeat, HEARTBEAT_MS); }
+  function stopHeartbeat(){ if (heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer = null; } }
+
+  async function closeSession(){
+    if (!current || role !== "OWNER") return;
+    try{
+      await supa.from("inbound_sessions").update({status:"CLOSED", updated_at:new Date().toISOString()}).eq("id", current.id);
+      broadcast("SESSION_CLOSED", {sessionId: current.id});
+    }catch(e){ console.warn("Gagal menutup sesi:", e); }
+    leaveSession();
+  }
+
+  /* Takeover TIDAK menghapus snapshot -- hanya memindahkan owner_id/owner_name
+     dan mencatat audit trail (dipertahankan, bukan ditimpa). */
+  async function takeoverSession(sessionRow){
+    if (!supaReady || !currentUser) return null;
+    var auditEntry = {at:new Date().toISOString(), from:sessionRow.owner_name || "", to:currentUser.email,
+                       what:"Ambil alih sesi (owner tidak aktif > " + Math.round(SESSION_STALE_MS/60000) + " menit)"};
+    var newAudit = (sessionRow.audit || []).concat([auditEntry]).slice(-200);
+    var res = await supa.from("inbound_sessions").update({
+      owner_id: currentUser.id, owner_name: currentUser.email,
+      last_activity_at: new Date().toISOString(), audit: newAudit
+    }).eq("id", sessionRow.id).select().single();
+    if (res.error) throw res.error;
+    current = res.data; role = "OWNER"; followMode = "data";
+    try{ window.localStorage.setItem(LAST_JOIN_KEY, current.id); }catch(e){}
+    await subscribeRealtime(current.id);
+    broadcast("SESSION_UPDATED", {sessionId: current.id, takeover:true});
+    startHeartbeat();
+    return current;
+  }
+
+  async function subscribeRealtime(sessionId){
+    if (!supaReady) return;
+    if (channel){ try{ supa.removeChannel(channel); }catch(e){} channel = null; }
+    channel = supa.channel("inbound-session-" + sessionId, {config:{presence:{key:currentUser.id}}});
+    channel.on("presence", {event:"sync"}, function(){ emit({type:"PRESENCE", state:channel.presenceState()}); });
+    channel.on("broadcast", {event:"session"}, function(msg){ emit({type:"BROADCAST", payload:msg.payload}); });
+    channel.on("postgres_changes", {event:"UPDATE", schema:"public", table:"inbound_sessions", filter:"id=eq." + sessionId}, function(payload){
+      emit({type:"SESSION_ROW", payload:payload.new});
+    });
+    await channel.subscribe(async function(status){
+      if (status === "SUBSCRIBED"){
+        await channel.track({user_id:currentUser.id, name:currentUser.email, role:role || "FOLLOWER", at:new Date().toISOString()});
+      }
+    });
+  }
+
+  function broadcast(type, data){
+    if (!channel) return;
+    channel.send({type:"broadcast", event:"session", payload:Object.assign({type:type, from:currentUser?currentUser.email:""}, data||{})});
+  }
+  /* Hanya OWNER yang "disiarkan" tampilannya -- follower TIDAK otomatis
+     menyeragamkan filter satu sama lain (sesuai ketentuan). */
+  function broadcastViewState(viewObj){
+    if (role !== "OWNER") return;
+    broadcast("VIEW_CHANGED", {view: viewObj});
+  }
+  function broadcastCaseOpened(brand, nopen){
+    if (role !== "OWNER") return;
+    broadcast("CASE_OPENED", {brand:brand, nopen:nopen});
+  }
+
+  async function pullLatest(){
+    if (!current) return null;
+    var fresh = await fetchSession(current.id);
+    if (fresh) current = fresh;
+    return current;
+  }
+
+  return {
+    getActiveSession: getActiveSession, fetchSession: fetchSession, pullLatest: pullLatest,
+    saveSnapshot: saveSnapshot, loadSnapshot: loadSnapshot,
+    joinSession: joinSession, reclaimSession: reclaimSession, leaveSession: leaveSession, closeSession: closeSession,
+    takeoverSession: takeoverSession, subscribeRealtime: subscribeRealtime,
+    broadcast: broadcast, broadcastViewState: broadcastViewState, broadcastCaseOpened: broadcastCaseOpened,
+    on: on, getCurrent: function(){ return current; }, getRole: function(){ return role; },
+    getFollowMode: function(){ return followMode; }, setFollowMode: function(m){ followMode = m; },
+    isStale: function(sessionRow){
+      var s = sessionRow || current; if (!s) return false;
+      return (Date.now() - new Date(s.last_activity_at).getTime()) > SESSION_STALE_MS;
+    }
+  };
+})();
+
 function refreshAuthUI(session){
   var user = session && session.user ? session.user : null;
   currentUser = user;
@@ -2059,10 +2376,13 @@ function refreshAuthUI(session){
     if (APP.cases.currentUser() === "Pengguna" && user.email) APP.cases.setUser(user.email);
     pullCasesFromSupabase().then(function(){
       if (window.__rekonInboundRefresh) window.__rekonInboundRefresh();
+      if (window.__rekonInboundSessionCheck) window.__rekonInboundSessionCheck();
     });
+    subscribeCasesRealtime();
   }else{
     document.body.classList.remove("authed");
     if (gateEmail) gateEmail.textContent = "";
+    unsubscribeCasesRealtime();
   }
 }
 
@@ -2542,6 +2862,7 @@ var busy = false;
 var PAGE_SIZE = 100;
 var view = { brand: "ADIDAS", mode: "nopen", filter: "issues", q: "", page: 0, colFilters: {} };
 var editing = null;
+var presenceState = {};   // Collaborative Shared Session: state presence terakhir dari Supabase Realtime
 
 /* ============================================================
    UTIL TAMPILAN
@@ -2879,6 +3200,19 @@ async function run(){
     $("#resultsArea").style.display = "block";
     setStatus("");
     $("#resultsArea").scrollIntoView({behavior:"smooth", block:"start"});
+
+    // --- Collaborative Shared Session: simpan snapshot supaya follower bisa membuka
+    // hasil ini tanpa upload ulang. Kegagalan di sini TIDAK membatalkan hasil
+    // rekonsiliasi yang sudah tampil -- tool tetap berfungsi normal standalone.
+    if (supaReady && currentUser){
+      try{
+        await SessionMgr.saveSnapshot(RESULT, {periodKey: out.periodKey, sourceNames: out.sources});
+        renderSessionBanner();
+      }catch(sessErr){
+        console.warn("Gagal menyimpan sesi bersama:", sessErr);
+        setStatus("Rekonsiliasi selesai. Catatan: gagal membuat sesi bersama (" + ((sessErr&&sessErr.message)||sessErr) + ") — kolega lain tidak akan melihat hasil ini sampai Anda coba lagi.", "warn");
+      }
+    }
   } catch(err){
     setStatus("Rekonsiliasi gagal: " + ((err&&err.message)||String(err)), "warn");
     if (window.console) console.error(err);
@@ -3289,7 +3623,8 @@ function openCase(nopen, brandParam){
   if (!row) return;
   var brand = brandParam || rowBrand(row);
   var c = CASES.get(brand, nopen);
-  editing = {brand:brand, nopen:nopen, row:row};
+  editing = {brand:brand, nopen:nopen, row:row, baseUpdatedAt: c ? c.updatedAt : null};
+  SessionMgr.broadcastCaseOpened(brand, nopen);
 
   $("#nmTitle").textContent = "NOPEN " + nopen;
   $("#nmSub").textContent = (brand==="ADIDAS"?"Adidas":"Nike") + " · " + (row.SHIPPER || "tanpa shipper");
@@ -3404,16 +3739,44 @@ function openCase(nopen, brandParam){
   $("#modalOverlay").classList.add("open");
 }
 function closeCase(){ $("#modalOverlay").classList.remove("open"); editing = null; }
-function saveCase(){
+async function saveCase(){
   if (!editing) return;
   var st = ($$("#nmStatusPills .status-pill").filter(function(b){ return b.getAttribute("aria-pressed")==="true"; })[0] || {}).dataset;
-  CASES.save(editing.brand, editing.nopen, {
+  var fields = {
     remark: $("#nmRemark").value, pic: $("#nmPic").value, status: st ? st.s : "OPEN",
     qtyAdj: parseFloat($("#nmQtyAdj").value) || 0,
     cbmAdj: parseFloat($("#nmCbmAdj").value) || 0,
     qtyAdjNote: $("#nmQtyAdjNote").value,
     cbmAdjNote: $("#nmCbmAdjNote").value
-  }, {issueType: editing.row.PRIMARY, severity: editing.row.SEVERITY});
+  };
+  var context = {issueType: editing.row.PRIMARY, severity: editing.row.SEVERITY};
+
+  // --- Concurrent editing: deteksi apakah orang lain sudah mengubah case ini
+  // di server sejak form ini dibuka. Jangan silent overwrite -- munculkan
+  // konfirmasi. Kalau pengecekan sendiri gagal (mis. offline), lanjut simpan
+  // seperti biasa supaya kegagalan jaringan tidak memblokir pekerjaan.
+  if (supaReady && currentUser){
+    try{
+      var chk = await supa.from("inbound_cases").select("updated_at,user_name").eq("id", editing.brand+"|"+editing.nopen).maybeSingle();
+      if (!chk.error && chk.data && editing.baseUpdatedAt && chk.data.updated_at &&
+          String(chk.data.updated_at) > String(editing.baseUpdatedAt)){
+        var overwrite = confirm(
+          "Case ini sudah diubah oleh " + (chk.data.user_name || "orang lain") +
+          " (" + C.fmtStamp(chk.data.updated_at) + ") sejak Anda membuka form ini.\n\n" +
+          "Klik OK untuk TETAP MENYIMPAN perubahan Anda (menimpa perubahan mereka), atau " +
+          "Batal untuk membatalkan dan memuat ulang data terbaru dari server."
+        );
+        if (!overwrite){
+          closeCase();
+          await pullCasesFromSupabase();
+          if (window.__rekonInboundRefresh) window.__rekonInboundRefresh();
+          return;
+        }
+      }
+    }catch(e){ console.warn("Gagal memeriksa konflik case (lanjut simpan):", e); }
+  }
+
+  CASES.save(editing.brand, editing.nopen, fields, context);
   closeCase();
   renderResults();
 }
@@ -3518,12 +3881,12 @@ function init(){
     }
     if ((t = e.target.closest(".brand-tab"))){
       view.brand = t.getAttribute("data-brand"); view.page = 0; view.filter="issues"; view.mode="nopen"; view.colFilters = {};
-      renderResults(); return;
+      renderResults(); SessionMgr.broadcastViewState(view); return;
     }
     if ((t = e.target.closest(".mode-btn"))){
       view.mode = t.getAttribute("data-mode"); view.page = 0; view.colFilters = {};
       $$(".mode-btn").forEach(function(x){ x.setAttribute("aria-selected", String(x===t)); });
-      renderTable(); return;
+      renderTable(); SessionMgr.broadcastViewState(view); return;
     }
     if ((t = e.target.closest("[data-col-filter]"))){
       e.stopPropagation();
@@ -3531,9 +3894,10 @@ function init(){
       if (!t.value) delete view.colFilters[t.getAttribute("data-col-filter")];
       view.page = 0;
       renderTable();
+      SessionMgr.broadcastViewState(view);
       return;
     }
-    if ((t = e.target.closest(".chip[data-f]"))){ view.filter = t.getAttribute("data-f"); view.page = 0; renderDashboard(); renderTable(); return; }
+    if ((t = e.target.closest(".chip[data-f]"))){ view.filter = t.getAttribute("data-f"); view.page = 0; renderDashboard(); renderTable(); SessionMgr.broadcastViewState(view); return; }
     if (e.target.id === "modalOverlay") closeCase();
   });
 
@@ -3549,13 +3913,13 @@ function init(){
     CASES.setUser(e.target.value);
     if (RESULT) $("#ovGen").textContent = C.fmtStamp(RESULT.generated.toISOString()) + " · oleh " + CASES.currentUser();
   });
-  $("#btnClearFilters").addEventListener("click", function(){ view.q=""; $("#fSearch").value=""; view.filter="issues"; view.page=0; view.colFilters={}; renderTable(); });
+  $("#btnClearFilters").addEventListener("click", function(){ view.q=""; $("#fSearch").value=""; view.filter="issues"; view.page=0; view.colFilters={}; renderTable(); SessionMgr.broadcastViewState(view); });
 
   var t;
   $("#fSearch").addEventListener("input", function(e){
     clearTimeout(t);
     var val = e.target.value;
-    t = setTimeout(function(){ view.q = val; view.page = 0; renderTable(); }, 200);
+    t = setTimeout(function(){ view.q = val; view.page = 0; renderTable(); SessionMgr.broadcastViewState(view); }, 200);
   });
 
   document.addEventListener("keydown", function(e){
@@ -3566,6 +3930,211 @@ function init(){
     setStatus("Penyimpanan browser tidak aktif — case hanya bertahan selama halaman terbuka. Gunakan \"Cadangkan Case\".", "warn");
   }
   renderIntake();
+  wireSessionUI();
+}
+
+/* ============================================================
+   Collaborative Shared Session -- lapisan UI di atas SessionMgr
+   (lihat modul SessionMgr di script "engine-logic"). Tidak mengubah
+   run()/renderResults()/CASES di atas selain hook kecil yang sudah
+   dipasang (lihat komentar "Collaborative Shared Session" di run(),
+   openCase(), saveCase(), dan handler filter/tab/search).
+============================================================ */
+function setUploadEnabled(enabled){
+  var drop = $("#dzMain"), picker = $("#fileMain"), btn = $("#btnRun");
+  if (drop) drop.classList.toggle("disabled-follow", !enabled);
+  if (picker) picker.disabled = !enabled;
+  if (btn) btn.disabled = enabled ? !gate().ok : true;
+}
+
+function applyFollowedResult(decoded){
+  RESULT = decoded;
+  view.brand = RESULT.adidas ? "ADIDAS" : "NIKE";
+  view.filter = "issues"; view.page = 0; view.q = ""; view.mode = "nopen"; view.colFilters = {};
+  $("#fSearch").value = "";
+  renderResults();
+  $("#resultsArea").style.display = "block";
+  var isOwner = SessionMgr.getRole() === "OWNER";
+  setUploadEnabled(isOwner);
+  setStatus(isOwner ? "" : "Mengikuti sesi bersama — data disinkron dari server, tidak perlu upload ulang.");
+}
+
+function renderSessionBanner(){
+  var s = SessionMgr.getCurrent();
+  var banner = $("#sessionBanner"), warn = $("#sessionOfflineWarn");
+  if (!s){ banner.style.display = "none"; banner.innerHTML = ""; warn.style.display = "none"; return; }
+  var role = SessionMgr.getRole();
+  var stale = SessionMgr.isStale(s);
+  var src = s.source_names || {};
+  var srcList = [src.scm, src.ior, src.nike].filter(Boolean);
+
+  var plist = [];
+  Object.keys(presenceState || {}).forEach(function(key){
+    var arr = presenceState[key] || [];
+    if (arr.length) plist.push(arr[arr.length - 1]);
+  });
+  var dotsHtml = (plist.length ? plist : [{name:s.owner_name, role:"OWNER"}]).map(function(p){
+    var isOwner = p.name === s.owner_name;
+    return '<span class="sl-dot' + (isOwner ? ' owner' : '') + '"><i></i>' + C.esc(p.name || "") + (isOwner ? " (OWNER)" : "") + '</span>';
+  }).join("");
+
+  var rightExtra = "";
+  if (role === "FOLLOWER"){
+    rightExtra += '<select class="sl-select" id="followModeSelect">' +
+      '<option value="data"' + (SessionMgr.getFollowMode()==="data"?" selected":"") + '>Ikuti Data</option>' +
+      '<option value="view"' + (SessionMgr.getFollowMode()==="view"?" selected":"") + '>Ikuti Tampilan</option>' +
+      '</select>' +
+      '<button class="btn btn-ghost btn-small" id="btnSessionLeave">Berhenti Mengikuti</button>';
+  }else if (role === "OWNER"){
+    rightExtra += '<button class="btn btn-ghost btn-small" id="btnSessionClose">Tutup Sesi</button>';
+  }
+
+  banner.innerHTML =
+    '<div class="session-live' + (stale ? " stale" : "") + '">' +
+      '<div class="sl-left"><span class="sl-tag">LIVE SESSION</span><span class="sl-title">' + C.esc(s.period_key || "Rekonsiliasi Inbound") + '</span></div>' +
+      '<div class="sl-mid">' +
+        '<div class="sl-field"><label>Owner</label><b>' + C.esc(s.owner_name || "") + '</b></div>' +
+        '<div class="sl-field"><label>Source</label><b>' + (srcList.length ? C.esc(srcList.join(", ")) : "—") + '</b></div>' +
+        '<div class="sl-field"><label>Participants</label><span class="sl-participants">' + dotsHtml + '</span></div>' +
+        '<div class="sl-field"><label>Status</label><b>' + C.esc(s.status) + '</b></div>' +
+      '</div>' +
+      '<div class="sl-right"><span class="sl-sync" data-state="SYNCED">SYNCED</span>' + rightExtra + '</div>' +
+    '</div>';
+  banner.style.display = "block";
+
+  if (stale && role === "FOLLOWER"){
+    warn.innerHTML = "Owner tidak aktif. " +
+      '<button class="btn btn-ghost btn-small" id="btnSessionTakeover" style="margin-left:8px;">Ambil Alih Sesi</button>';
+    warn.style.display = "block";
+  }else{
+    warn.style.display = "none";
+  }
+}
+
+function showSessionFoundModal(s){
+  var src = s.source_names || {};
+  var srcList = [src.scm, src.ior, src.nike].filter(Boolean);
+  $("#sessionModalBody").innerHTML =
+    '<p style="margin-top:0;">Rekonsiliasi Inbound sedang dikerjakan oleh <strong>' + C.esc(s.owner_name || "") + '</strong>.</p>' +
+    '<div class="kv-grid" style="margin-bottom:16px;">' +
+      '<div class="k">Owner</div><div class="v">' + C.esc(s.owner_name || "") + '</div>' +
+      '<div class="k">Period</div><div class="v">' + C.esc(s.period_key || "—") + '</div>' +
+      '<div class="k">Source files</div><div class="v">' + (srcList.length ? C.esc(srcList.join(", ")) : "—") + '</div>' +
+      '<div class="k">Start time</div><div class="v">' + C.esc(C.fmtStamp(s.started_at)) + '</div>' +
+      '<div class="k">Session status</div><div class="v">' + C.esc(s.status) + (SessionMgr.isStale(s) ? " (owner tidak aktif)" : "") + '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+      '<button class="btn btn-primary" id="btnJoinSession">Ikuti Sesi</button>' +
+      '<button class="btn btn-ghost" id="btnStartNewSession">Mulai Sesi Baru</button>' +
+    '</div>';
+  $("#sessionModalOverlay").classList.add("open");
+  $("#btnJoinSession").onclick = async function(){
+    try{
+      await SessionMgr.joinSession(s);
+      applyFollowedResult(await SessionMgr.loadSnapshot(s));
+      renderSessionBanner();
+      $("#sessionModalOverlay").classList.remove("open");
+    }catch(e){ alert("Gagal mengikuti sesi: " + ((e&&e.message)||e)); }
+  };
+  $("#btnStartNewSession").onclick = function(){
+    $("#sessionModalOverlay").classList.remove("open");
+  };
+}
+
+// diekspos supaya refreshAuthUI() (di script terpisah) bisa memeriksa sesi aktif setelah login
+window.__rekonInboundSessionCheck = async function(){
+  if (!supaReady || !currentUser) return;
+  try{
+    var s = await SessionMgr.getActiveSession();
+    if (!s){ renderSessionBanner(); return; }
+    if (s.owner_id === currentUser.id){
+      await SessionMgr.reclaimSession(s);
+      if (!RESULT){
+        try{ applyFollowedResult(await SessionMgr.loadSnapshot(s)); }
+        catch(e){ console.warn("Gagal memuat snapshot sesi sendiri:", e); }
+      }
+      renderSessionBanner();
+      return;
+    }
+    var lastId = null;
+    try{ lastId = window.localStorage.getItem("rekon_inbound_last_session_id"); }catch(e){}
+    if (lastId && lastId === s.id){
+      await SessionMgr.joinSession(s);
+      try{ applyFollowedResult(await SessionMgr.loadSnapshot(s)); }
+      catch(e){ console.warn("Gagal memuat ulang snapshot:", e); }
+      renderSessionBanner();
+      return;
+    }
+    showSessionFoundModal(s);
+  }catch(e){ console.warn("Gagal memeriksa sesi aktif:", e); }
+};
+
+function wireSessionUI(){
+  $("#sessionModalClose").addEventListener("click", function(){ $("#sessionModalOverlay").classList.remove("open"); });
+
+  document.addEventListener("click", function(e){
+    var t;
+    if ((t = e.target.closest("#btnSessionClose"))){
+      if (confirm("Tutup sesi ini? Follower tidak akan lagi melihat sesi ini sebagai aktif (snapshot tetap tersimpan).")){
+        SessionMgr.closeSession().then(renderSessionBanner);
+      }
+      return;
+    }
+    if ((t = e.target.closest("#btnSessionLeave"))){
+      SessionMgr.leaveSession();
+      setUploadEnabled(true);
+      renderSessionBanner();
+      return;
+    }
+    if ((t = e.target.closest("#btnSessionTakeover"))){
+      var s = SessionMgr.getCurrent();
+      if (s && confirm("Ambil alih sesi ini sebagai owner? Anda akan bisa upload/replace sumber & menjalankan ulang.")){
+        SessionMgr.takeoverSession(s).then(function(){ setUploadEnabled(true); renderSessionBanner(); });
+      }
+      return;
+    }
+  });
+  document.addEventListener("change", function(e){
+    if (e.target && e.target.id === "followModeSelect") SessionMgr.setFollowMode(e.target.value);
+  });
+
+  SessionMgr.on(async function(evt){
+    if (evt.type === "PRESENCE"){ presenceState = evt.state; renderSessionBanner(); return; }
+    if (evt.type === "SESSION_ROW"){ renderSessionBanner(); return; }
+    if (evt.type !== "BROADCAST") return;
+    var p = evt.payload || {};
+    if (p.type === "DATA_UPDATED"){
+      if (SessionMgr.getRole() === "FOLLOWER"){
+        try{
+          var fresh = await SessionMgr.pullLatest();
+          applyFollowedResult(await SessionMgr.loadSnapshot(fresh));
+        }catch(e){ console.warn("Gagal menyegarkan data sesi:", e); }
+      }
+      renderSessionBanner();
+    }else if (p.type === "SESSION_CLOSED"){
+      if (SessionMgr.getRole() === "FOLLOWER"){
+        alert("Sesi ini telah ditutup oleh pemiliknya.");
+        SessionMgr.leaveSession();
+        setUploadEnabled(true);
+        renderSessionBanner();
+      }
+    }else if (p.type === "VIEW_CHANGED"){
+      if (SessionMgr.getRole() === "FOLLOWER" && SessionMgr.getFollowMode() === "view" && p.view){
+        view = Object.assign({}, view, p.view);
+        renderResults();
+      }
+    }else if (p.type === "CASE_OPENED"){
+      if (SessionMgr.getRole() === "FOLLOWER" && SessionMgr.getFollowMode() === "view" && p.nopen){
+        openCase(p.nopen, p.brand);
+      }
+    }else if (p.type === "SESSION_UPDATED"){
+      await SessionMgr.pullLatest();
+      renderSessionBanner();
+    }
+  });
+
+  setInterval(function(){ if (SessionMgr.getCurrent()) renderSessionBanner(); }, 30000);
+  renderSessionBanner();
 }
 
 document.addEventListener("DOMContentLoaded", init);
