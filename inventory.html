@@ -148,6 +148,36 @@ body:not(.authed) .band, body:not(.authed) .wrap{display:none}
 .runrow .rmeta{flex:1;min-width:180px}
 .runrow .rmeta small{display:block;color:var(--ink-soft);font-size:11px;margin-top:2px}
 
+/* ---------- GLT Rekon Suite: nav lintas-tool ---------- */
+body{padding-top:38px}
+.glt-nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:#0f1b2d;color:#dfe6f0;display:flex;align-items:center;gap:20px;padding:9px 20px;font-family:var(--sans);font-size:12.5px;flex-wrap:wrap}
+.glt-nav-brand{color:#fff;font-weight:800;letter-spacing:.03em;text-decoration:none;font-size:13px}
+.glt-nav-brand span{font-weight:400;color:#9fb0c9;margin-left:5px}
+.glt-nav-links{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap}
+.glt-nav-links a{color:#bcd0e8;text-decoration:none;padding:4px 9px;border-radius:5px}
+.glt-nav-links a:hover{background:rgba(255,255,255,.08);color:#fff}
+.glt-nav-links a.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600}
+
+/* ---------- Notifikasi & konfirmasi (pengganti alert/confirm bawaan) ---------- */
+.glt-toast-wrap{position:fixed;top:48px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;max-width:360px}
+.glt-toast{background:var(--ink);color:#fff;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:10px;align-items:flex-start;animation:gltIn .18s ease-out;font-family:var(--sans)}
+.glt-toast.ok{background:var(--ok)}
+.glt-toast.err{background:var(--err)}
+.glt-toast.warn{background:#9A6B00}
+.glt-toast .glt-toast-msg{white-space:pre-line;flex:1}
+.glt-toast .glt-toast-x{cursor:pointer;opacity:.7;font-size:15px;line-height:1}
+.glt-toast .glt-toast-x:hover{opacity:1}
+@keyframes gltIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.glt-confirm-overlay{position:fixed;inset:0;background:rgba(15,20,35,.5);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px}
+.glt-confirm-box{background:#fff;border-radius:10px;max-width:440px;width:100%;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.glt-confirm-box p{white-space:pre-line;font-size:13.5px;color:var(--ink);margin:0 0 18px;line-height:1.5}
+.glt-confirm-box input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:13.5px;margin-bottom:16px}
+.glt-confirm-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.glt-confirm-actions button{padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--line);background:#fff}
+.glt-confirm-actions button.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.glt-confirm-actions button.danger{background:var(--err);border-color:var(--err);color:#fff}
+.glt-confirm-actions button:disabled{opacity:.5;cursor:default}
+
 /* ---------- Ledger strip (signature) ---------- */
 .ledger{background:var(--card);border:1px solid var(--line);border-radius:8px;
   padding:18px;margin-bottom:16px}
@@ -249,13 +279,24 @@ td.nowrap{white-space:nowrap}
 </head>
 <body>
 
+<div class="glt-nav">
+  <a class="glt-nav-brand" href="index.html">GLT <span>Rekon Suite</span></a>
+  <div class="glt-nav-links">
+    <a href="index.html">Beranda</a>
+    <a href="outbound.html">Outbound</a>
+    <a href="Rekonsiliasi_Inbound.html">Inbound</a>
+    <a href="inventory.html" class="active">Inventory</a>
+    <a href="admin.html">Admin</a>
+  </div>
+</div>
+
 <div id="authgate">
   <div class="authbox">
     <h2>Cek Inventory vs SCM</h2>
     <p class="sub">Masuk untuk mengakses data bersama</p>
     <form id="authForm">
-      <label for="authEmail">Email</label>
-      <input type="email" id="authEmail" autocomplete="username" required>
+      <label for="authEmail">Nama Pengguna</label>
+      <input type="text" id="authEmail" autocomplete="username" required>
       <label for="authPass">Kata sandi</label>
       <input type="password" id="authPass" autocomplete="current-password" required>
       <button type="submit" id="authSubmit">Masuk</button>
@@ -497,8 +538,72 @@ const SUPABASE_URL = "https://xyvldxygnkwztsmhrwci.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5dmxkeHlnbmt3enRzbWhyd2NpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3MDk3MDgsImV4cCI6MjEwNTI4NTcwOH0.-xXLPyICbdjFAWhBxRDDrnBUBfUT6woSAzDuEReJjuA";
 const supaReady = !/GANTI_DENGAN/.test(SUPABASE_URL) && !/GANTI_DENGAN/.test(SUPABASE_ANON_KEY);
 const supa = supaReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+/* Login pakai NAMA PENGGUNA, bukan email -- lihat penjelasan yang sama di
+   Rekonsiliasi_Inbound.html / outbound.html. */
+const USERNAME_EMAIL_DOMAIN = '@rekon.local';
+function usernameToEmail(u){
+  const clean = String(u || '').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '');
+  return clean + USERNAME_EMAIL_DOMAIN;
+}
+function displayNameFromUser(user){
+  if(!user) return '';
+  if(user.user_metadata && user.user_metadata.display_name) return String(user.user_metadata.display_name);
+  const email = user.email || '';
+  return email.slice(0, Math.max(0, email.length - USERNAME_EMAIL_DOMAIN.length)) || email;
+}
 </script>
 <script>
+/* ====================== notifikasi & konfirmasi (pengganti alert/confirm) ======================
+   gltToast() untuk pesan info/sukses/error tak-blocking. gltChoice()/gltConfirm()
+   untuk konfirmasi berbasis Promise -- kode pemanggil tinggal `await`. */
+function gltToastWrap(){
+  let w = document.getElementById('gltToastWrap');
+  if(!w){ w = document.createElement('div'); w.id = 'gltToastWrap'; w.className = 'glt-toast-wrap'; document.body.appendChild(w); }
+  return w;
+}
+function gltToast(message, type, timeout){
+  const w = gltToastWrap();
+  const el = document.createElement('div');
+  el.className = 'glt-toast' + (type ? ' ' + type : '');
+  const msg = document.createElement('div'); msg.className = 'glt-toast-msg'; msg.textContent = message;
+  const x = document.createElement('span'); x.className = 'glt-toast-x'; x.textContent = '×';
+  x.addEventListener('click', () => el.remove());
+  el.appendChild(msg); el.appendChild(x);
+  w.appendChild(el);
+  setTimeout(() => el.remove(), timeout || 7000);
+  return el;
+}
+function gltChoice(message, buttons){
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'glt-confirm-overlay';
+    const box = document.createElement('div'); box.className = 'glt-confirm-box';
+    const p = document.createElement('p'); p.textContent = message; box.appendChild(p);
+    const actions = document.createElement('div'); actions.className = 'glt-confirm-actions';
+    buttons.forEach(b => {
+      const btn = document.createElement('button');
+      btn.textContent = b.label;
+      btn.className = b.danger ? 'danger' : (b.primary ? 'primary' : '');
+      btn.addEventListener('click', () => close(b.value));
+      actions.appendChild(btn);
+    });
+    box.appendChild(actions); overlay.appendChild(box);
+    function close(val){ overlay.remove(); document.removeEventListener('keydown', onKey); resolve(val); }
+    function onKey(e){ if(e.key === 'Escape') close(null); }
+    overlay.addEventListener('click', e => { if(e.target === overlay) close(null); });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+  });
+}
+function gltConfirm(message, opts){
+  opts = opts || {};
+  return gltChoice(message, [
+    {label: opts.cancelLabel || 'Batal', value:false},
+    {label: opts.okLabel || 'OK', value:true, danger:!!opts.danger, primary:!opts.danger}
+  ]).then(v => v === true);
+}
+
 /* ================= Konfigurasi pencocokan kolom ================= */
 const PEB_HINTS  = ['peb','nopen','no pen','pen no'];
 const QTY_HINTS  = ['qty package','qty pkg','total qty','qty','ctn','carton','karton','package'];
@@ -614,8 +719,8 @@ function runSnapshot(){
 }
 
 async function saveRun(){
-  if(!supaReady || !currentUser){ alert('Masuk dulu untuk menyimpan run.'); return; }
-  if(!state.rows.length){ alert('Jalankan pengecekan dulu sebelum menyimpan.'); return; }
+  if(!supaReady || !currentUser){ gltToast('Masuk dulu untuk menyimpan run.', 'warn'); return; }
+  if(!state.rows.length){ gltToast('Jalankan pengecekan dulu sebelum menyimpan.', 'warn'); return; }
   const snap = runSnapshot();
   try{
     let res;
@@ -626,7 +731,7 @@ async function saveRun(){
       }).eq('id', currentRunId);
     }else{
       res = await supa.from('inv_runs').insert({
-        created_by: currentUser.id, operator_name: currentUser.email,
+        created_by: currentUser.id, operator_name: displayNameFromUser(currentUser),
         ref_date: snap.ref_date, rows: snap.rows, listing: snap.listing, notes: snap.notes,
         file_names: snap.file_names, counts: snap.counts
       }).select().single();
@@ -637,7 +742,7 @@ async function saveRun(){
   }catch(e){
     console.warn('Gagal menyimpan run:', e);
     setSyncStatus('gagal menyimpan ke server', true);
-    alert('Gagal menyimpan run ke server: ' + (e.message || e));
+    gltToast('Gagal menyimpan run ke server: ' + (e.message || e), 'err');
   }
 }
 
@@ -676,7 +781,7 @@ function renderRunHistory(list){
 }
 
 async function openRun(id){
-  if(!confirm('Buka run ini? Tampilan yang belum disimpan akan diganti.')) return;
+  if(!(await gltConfirm('Buka run ini? Tampilan yang belum disimpan akan diganti.'))) return;
   try{
     const res = await supa.from('inv_runs').select('*').eq('id', id).single();
     if(res.error) throw res.error;
@@ -705,12 +810,12 @@ async function openRun(id){
     setSyncStatus('run dibuka · ' + new Date().toLocaleTimeString('id-ID'));
   }catch(e){
     console.warn('Gagal membuka run:', e);
-    alert('Gagal membuka run: ' + (e.message || e));
+    gltToast('Gagal membuka run: ' + (e.message || e), 'err');
   }
 }
 
 async function deleteRun(id){
-  if(!confirm('Hapus run ini dari server? Tindakan ini tidak bisa dibatalkan.')) return;
+  if(!(await gltConfirm('Hapus run ini dari server? Tindakan ini tidak bisa dibatalkan.', {danger:true, okLabel:'Hapus'}))) return;
   try{
     const res = await supa.from('inv_runs').delete().eq('id', id);
     if(res.error) throw res.error;
@@ -718,7 +823,7 @@ async function deleteRun(id){
     renderRunHistory(await loadRunHistory());
   }catch(e){
     console.warn('Gagal menghapus run:', e);
-    alert('Gagal menghapus run: ' + (e.message || e));
+    gltToast('Gagal menghapus run: ' + (e.message || e), 'err');
   }
 }
 
@@ -728,7 +833,7 @@ function refreshAuthUI(session){
   const emailEl = document.getElementById('acctEmail');
   if(user){
     document.body.classList.add('authed');
-    if(emailEl) emailEl.textContent = user.email || '';
+    if(emailEl) emailEl.textContent = displayNameFromUser(user);
   }else{
     document.body.classList.remove('authed');
     if(emailEl) emailEl.textContent = '';
@@ -748,14 +853,14 @@ if(!supaReady){
       e.preventDefault();
       const errEl = document.getElementById('authErr'), btn = document.getElementById('authSubmit');
       errEl.textContent = ''; btn.disabled = true;
-      const email = document.getElementById('authEmail').value.trim();
+      const username = document.getElementById('authEmail').value.trim();
       const pass = document.getElementById('authPass').value;
-      const {error} = await supa.auth.signInWithPassword({email, password: pass});
-      if(error) errEl.textContent = 'Gagal masuk: ' + error.message;
+      const {error} = await supa.auth.signInWithPassword({email: usernameToEmail(username), password: pass});
+      if(error) errEl.textContent = 'Nama pengguna atau kata sandi salah, atau akun belum dibuat. Hubungi admin untuk reset kata sandi.';
       btn.disabled = false;
     });
     document.getElementById('btnSignOut').addEventListener('click', async ()=>{
-      if(!confirm('Keluar dari akun ini?')) return;
+      if(!(await gltConfirm('Keluar dari akun ini?'))) return;
       await supa.auth.signOut();
     });
     document.getElementById('btnSaveRun').addEventListener('click', saveRun);

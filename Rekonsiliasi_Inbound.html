@@ -302,17 +302,58 @@ body:not(.authed) .topbar, body:not(.authed) .wrap{display:none;}
 .sl-select{border:1px solid var(--border-strong);border-radius:6px;padding:5px 8px;font-size:12px;background:#fff;color:var(--ink);}
 .session-offlinewarn{background:var(--amber-bg);color:#7a5300;border:1px solid #f0d38a;border-radius:8px;padding:8px 14px;font-size:12.5px;margin:-8px 0 16px;}
 .disabled-follow{pointer-events:none;opacity:.5;}
+
+/* ---------- Notifikasi & konfirmasi (pengganti alert/confirm bawaan) ---------- */
+.glt-toast-wrap{position:fixed;top:48px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;max-width:360px;}
+.glt-toast{background:var(--navy);color:#fff;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:10px;align-items:flex-start;animation:gltIn .18s ease-out;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+.glt-toast.ok{background:var(--green);}
+.glt-toast.err{background:var(--red);}
+.glt-toast.warn{background:var(--amber);}
+.glt-toast .glt-toast-msg{white-space:pre-line;flex:1;}
+.glt-toast .glt-toast-x{cursor:pointer;opacity:.7;font-size:15px;line-height:1;}
+.glt-toast .glt-toast-x:hover{opacity:1;}
+@keyframes gltIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.glt-confirm-overlay{position:fixed;inset:0;background:rgba(15,20,35,.5);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px;}
+.glt-confirm-box{background:#fff;border-radius:10px;max-width:440px;width:100%;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.glt-confirm-box p{white-space:pre-line;font-size:13.5px;color:var(--ink);margin:0 0 18px;line-height:1.5;}
+.glt-confirm-box input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13.5px;margin-bottom:16px;}
+.glt-confirm-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;}
+.glt-confirm-actions button{padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border-strong);background:#fff;}
+.glt-confirm-actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.glt-confirm-actions button.danger{background:var(--red);border-color:var(--red);color:#fff;}
+.glt-confirm-actions button:disabled{opacity:.5;cursor:default;}
+
+/* ---------- GLT Rekon Suite: nav lintas-tool ---------- */
+body{padding-top:38px;}
+.glt-nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:#0f1b2d;color:#dfe6f0;display:flex;align-items:center;gap:20px;padding:9px 20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:12.5px;flex-wrap:wrap;}
+.glt-nav-brand{color:#fff;font-weight:800;letter-spacing:.03em;text-decoration:none;font-size:13px;}
+.glt-nav-brand span{font-weight:400;color:#9fb0c9;margin-left:5px;}
+.glt-nav-links{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap;}
+.glt-nav-links a{color:#bcd0e8;text-decoration:none;padding:4px 9px;border-radius:5px;}
+.glt-nav-links a:hover{background:rgba(255,255,255,.08);color:#fff;}
+.glt-nav-links a.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600;}
 </style>
 </head>
 <body>
+
+<div class="glt-nav">
+  <a class="glt-nav-brand" href="index.html">GLT <span>Rekon Suite</span></a>
+  <div class="glt-nav-links">
+    <a href="index.html">Beranda</a>
+    <a href="outbound.html">Outbound</a>
+    <a href="Rekonsiliasi_Inbound.html" class="active">Inbound</a>
+    <a href="inventory.html">Inventory</a>
+    <a href="admin.html">Admin</a>
+  </div>
+</div>
 
 <div id="authgate">
   <div class="authbox">
     <h2>Rekonsiliasi Inbound</h2>
     <p class="sub">Masuk untuk mengakses data bersama</p>
     <form id="authForm">
-      <label for="authEmail">Email</label>
-      <input type="email" id="authEmail" autocomplete="username" required>
+      <label for="authEmail">Nama Pengguna</label>
+      <input type="text" id="authEmail" autocomplete="username" required>
       <label for="authPass">Kata sandi</label>
       <input type="password" id="authPass" autocomplete="current-password" required>
       <button type="submit" id="authSubmit">Masuk</button>
@@ -328,8 +369,7 @@ body:not(.authed) .topbar, body:not(.authed) .wrap{display:none;}
   </div>
   <div class="topbar-right">
     <span class="badge-pill" id="appVersionBadge">—</span>
-    <span class="badge-pill">Oleh: <input type="text" id="userInput" placeholder="nama Anda"></span>
-    <span class="badge-pill acct"><span id="syncStatus"></span><span id="acctEmail"></span><button type="button" id="btnSignOut">Keluar</button></span>
+    <span class="badge-pill acct"><span id="syncStatus"></span>Login: <span id="acctEmail"></span><button type="button" id="btnSignOut">Keluar</button></span>
   </div>
 </div>
 
@@ -501,8 +541,101 @@ const supaReady = !/GANTI_DENGAN/.test(SUPABASE_URL) && !/GANTI_DENGAN/.test(SUP
    dibagikan otomatis dengan tool lain (outbound.html, inventory.html) di domain yang sama
    -- login sekali, langsung bisa dipakai di ketiga tool. */
 const supa = supaReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+/* Login pakai NAMA PENGGUNA, bukan email -- Supabase Auth secara internal tetap
+   butuh field "email", jadi nama pengguna diterjemahkan ke alamat semu
+   "<nama>@rekon.local" (domain ini tidak pernah benar-benar mengirim email).
+   Nama tampilan (untuk PIC/audit/badge akun) diambil dari user_metadata.display_name
+   kalau diisi saat akun dibuat di Supabase, atau dari nama pengguna itu sendiri. */
+const USERNAME_EMAIL_DOMAIN = "@rekon.local";
+function usernameToEmail(u){
+  var clean = String(u || "").trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "");
+  return clean + USERNAME_EMAIL_DOMAIN;
+}
+function displayNameFromUser(user){
+  if (!user) return "";
+  if (user.user_metadata && user.user_metadata.display_name) return String(user.user_metadata.display_name);
+  var email = user.email || "";
+  return email.slice(0, Math.max(0, email.length - USERNAME_EMAIL_DOMAIN.length)) || email;
+}
 </script>
 <script id="engine-logic">
+
+/* ====================== notifikasi & konfirmasi (pengganti alert/confirm/prompt) ======================
+   gltToast() untuk pesan info/sukses/error tak-blocking. gltChoice()/gltConfirm()
+   untuk konfirmasi. gltPromptMatch() untuk konfirmasi ketik-ulang teks pada aksi
+   paling merusak. Semua berbasis Promise -- kode pemanggil tinggal `await`. */
+function gltToastWrap(){
+  var w = document.getElementById("gltToastWrap");
+  if (!w){ w = document.createElement("div"); w.id = "gltToastWrap"; w.className = "glt-toast-wrap"; document.body.appendChild(w); }
+  return w;
+}
+function gltToast(message, type, timeout){
+  var w = gltToastWrap();
+  var el = document.createElement("div");
+  el.className = "glt-toast" + (type ? " " + type : "");
+  var msg = document.createElement("div"); msg.className = "glt-toast-msg"; msg.textContent = message;
+  var x = document.createElement("span"); x.className = "glt-toast-x"; x.textContent = "×";
+  x.addEventListener("click", function(){ el.remove(); });
+  el.appendChild(msg); el.appendChild(x);
+  w.appendChild(el);
+  setTimeout(function(){ el.remove(); }, timeout || 7000);
+  return el;
+}
+function gltChoice(message, buttons){
+  return new Promise(function(resolve){
+    var overlay = document.createElement("div");
+    overlay.className = "glt-confirm-overlay";
+    var box = document.createElement("div"); box.className = "glt-confirm-box";
+    var p = document.createElement("p"); p.textContent = message; box.appendChild(p);
+    var actions = document.createElement("div"); actions.className = "glt-confirm-actions";
+    buttons.forEach(function(b){
+      var btn = document.createElement("button");
+      btn.textContent = b.label;
+      btn.className = b.danger ? "danger" : (b.primary ? "primary" : "");
+      btn.addEventListener("click", function(){ close(b.value); });
+      actions.appendChild(btn);
+    });
+    box.appendChild(actions); overlay.appendChild(box);
+    function close(val){ overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); }
+    function onKey(e){ if (e.key === "Escape") close(null); }
+    overlay.addEventListener("click", function(e){ if (e.target === overlay) close(null); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+  });
+}
+function gltConfirm(message, opts){
+  opts = opts || {};
+  return gltChoice(message, [
+    {label: opts.cancelLabel || "Batal", value:false},
+    {label: opts.okLabel || "OK", value:true, danger:!!opts.danger, primary:!opts.danger}
+  ]).then(function(v){ return v === true; });
+}
+function gltPromptMatch(message, matchValue, opts){
+  opts = opts || {};
+  return new Promise(function(resolve){
+    var overlay = document.createElement("div");
+    overlay.className = "glt-confirm-overlay";
+    var box = document.createElement("div"); box.className = "glt-confirm-box";
+    var p = document.createElement("p"); p.textContent = message; box.appendChild(p);
+    var input = document.createElement("input");
+    input.type = "text"; input.placeholder = opts.placeholder || ("Ketik " + matchValue);
+    box.appendChild(input);
+    var actions = document.createElement("div"); actions.className = "glt-confirm-actions";
+    var cancelBtn = document.createElement("button"); cancelBtn.textContent = opts.cancelLabel || "Batal";
+    var okBtn = document.createElement("button"); okBtn.textContent = opts.okLabel || "Hapus"; okBtn.className = "danger"; okBtn.disabled = true;
+    actions.appendChild(cancelBtn); actions.appendChild(okBtn); box.appendChild(actions); overlay.appendChild(box);
+    function close(val){ overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); }
+    function onKey(e){ if (e.key === "Escape") close(false); }
+    input.addEventListener("input", function(){ okBtn.disabled = input.value.trim().toUpperCase() !== matchValue.toUpperCase(); });
+    okBtn.addEventListener("click", function(){ close(true); });
+    cancelBtn.addEventListener("click", function(){ close(false); });
+    overlay.addEventListener("click", function(e){ if (e.target === overlay) close(false); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+    setTimeout(function(){ input.focus(); }, 30);
+  });
+}
 
 /* ============================================================
    Rekonsiliasi Inbound
@@ -2372,8 +2505,10 @@ function refreshAuthUI(session){
   var gateEmail = document.getElementById("acctEmail");
   if (user){
     document.body.classList.add("authed");
-    if (gateEmail) gateEmail.textContent = user.email || "";
-    if (APP.cases.currentUser() === "Pengguna" && user.email) APP.cases.setUser(user.email);
+    if (gateEmail) gateEmail.textContent = displayNameFromUser(user);
+    // Selalu disamakan dengan identitas login (bukan sekali saja) supaya nama di
+    // audit/PIC tidak bisa dipalsukan lewat field bebas -- lihat saveCase().
+    APP.cases.setUser(displayNameFromUser(user));
     pullCasesFromSupabase().then(function(){
       if (window.__rekonInboundRefresh) window.__rekonInboundRefresh();
       if (window.__rekonInboundSessionCheck) window.__rekonInboundSessionCheck();
@@ -2400,14 +2535,14 @@ if (!supaReady){
       e.preventDefault();
       var errEl = document.getElementById("authErr"), btn = document.getElementById("authSubmit");
       errEl.textContent = ""; btn.disabled = true;
-      var email = document.getElementById("authEmail").value.trim();
+      var username = document.getElementById("authEmail").value.trim();
       var pass = document.getElementById("authPass").value;
-      var res = await supa.auth.signInWithPassword({email: email, password: pass});
-      if (res.error) errEl.textContent = "Gagal masuk: " + res.error.message;
+      var res = await supa.auth.signInWithPassword({email: usernameToEmail(username), password: pass});
+      if (res.error) errEl.textContent = "Nama pengguna atau kata sandi salah, atau akun belum dibuat. Hubungi admin untuk reset kata sandi.";
       btn.disabled = false;
     });
     document.getElementById("btnSignOut").addEventListener("click", async function(){
-      if (!confirm("Keluar dari akun ini?")) return;
+      if (!(await gltConfirm("Keluar dari akun ini?"))) return;
       await supa.auth.signOut();
     });
   });
@@ -3697,7 +3832,7 @@ function openCase(nopen, brandParam){
         '<div class="status-pills" id="nmStatusPills">'+CASES.STATUS.map(function(s){
           return '<button type="button" class="status-pill" data-s="'+s+'" aria-pressed="'+((c?c.status:"OPEN")===s)+'">'+s+'</button>';
         }).join("")+'</div>'+
-        '<div class="adj-row"><div class="field"><label>PIC</label><input type="text" id="nmPic" value="'+C.esc(c?c.pic:"")+'" placeholder="Nama PIC"></div></div>'+
+        '<div class="adj-row"><div class="field"><label>PIC (otomatis)</label><input type="text" id="nmPic" value="'+C.esc(c?c.pic:CASES.currentUser())+'" disabled title="PIC otomatis mengikuti orang yang terakhir menyimpan case ini"></div></div>'+
         '<div class="adj-row"><div class="field"><label>Remark</label><textarea id="nmRemark" placeholder="Catatan tindak lanjut...">'+C.esc(c?c.remark:"")+'</textarea></div></div>'+
         '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
           '<button class="btn btn-primary btn-small" id="nmSave">💾 Simpan</button>'+
@@ -3717,7 +3852,9 @@ function openCase(nopen, brandParam){
   });
   $("#nmSave").addEventListener("click", saveCase);
   var delBtn = $("#nmDelete");
-  if (delBtn) delBtn.addEventListener("click", function(){
+  if (delBtn) delBtn.addEventListener("click", async function(){
+    var ok = await gltConfirm("Hapus case untuk NOPEN " + editing.nopen + "?\n\nRemark, PIC, penyesuaian, dan riwayat perubahan case ini akan hilang. Tindakan ini tidak bisa dibatalkan.", {danger:true, okLabel:"Hapus"});
+    if (!ok) return;
     CASES.remove(editing.brand, editing.nopen);
     closeCase(); renderResults();
   });
@@ -3743,7 +3880,7 @@ async function saveCase(){
   if (!editing) return;
   var st = ($$("#nmStatusPills .status-pill").filter(function(b){ return b.getAttribute("aria-pressed")==="true"; })[0] || {}).dataset;
   var fields = {
-    remark: $("#nmRemark").value, pic: $("#nmPic").value, status: st ? st.s : "OPEN",
+    remark: $("#nmRemark").value, pic: CASES.currentUser(), status: st ? st.s : "OPEN",
     qtyAdj: parseFloat($("#nmQtyAdj").value) || 0,
     cbmAdj: parseFloat($("#nmCbmAdj").value) || 0,
     qtyAdjNote: $("#nmQtyAdjNote").value,
@@ -3760,11 +3897,10 @@ async function saveCase(){
       var chk = await supa.from("inbound_cases").select("updated_at,user_name").eq("id", editing.brand+"|"+editing.nopen).maybeSingle();
       if (!chk.error && chk.data && editing.baseUpdatedAt && chk.data.updated_at &&
           String(chk.data.updated_at) > String(editing.baseUpdatedAt)){
-        var overwrite = confirm(
+        var overwrite = await gltConfirm(
           "Case ini sudah diubah oleh " + (chk.data.user_name || "orang lain") +
-          " (" + C.fmtStamp(chk.data.updated_at) + ") sejak Anda membuka form ini.\n\n" +
-          "Klik OK untuk TETAP MENYIMPAN perubahan Anda (menimpa perubahan mereka), atau " +
-          "Batal untuk membatalkan dan memuat ulang data terbaru dari server."
+          " (" + C.fmtStamp(chk.data.updated_at) + ") sejak Anda membuka form ini.",
+          {okLabel:"Tetap simpan (timpa)", cancelLabel:"Muat ulang punya mereka", danger:true}
         );
         if (!overwrite){
           closeCase();
@@ -3800,7 +3936,7 @@ async function exportFilteredXLSX(){
     var rows = filteredRows();
     var payload = view.mode === "detail" ? {main:[], detail:rows} : {main:rows, detail:[]};
     EX.downloadFilteredXLSX(RESULT, payload, view.brand, view.mode, currentFilterLabel(), view.q);
-  } catch(err) { alert("Gagal membuat file export filter: " + err.message); }
+  } catch(err) { gltToast("Gagal membuat file export filter: " + err.message, "err"); }
   btn.disabled = false; btn.innerHTML = orig;
 }
 
@@ -3812,7 +3948,7 @@ async function exportXLSX(){
   btn.innerHTML = '<span class="spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:#2f6fed;"></span> Menyiapkan...';
   await C.yieldUI();
   try{ EX.downloadXLSX(RESULT); }
-  catch(err){ alert("Gagal membuat file export: " + err.message); }
+  catch(err){ gltToast("Gagal membuat file export: " + err.message, "err"); }
   btn.disabled = false; btn.innerHTML = orig;
 }
 function backupCases(){
@@ -3846,7 +3982,6 @@ function reset(){
 function init(){
   CASES.load();
   $("#appVersionBadge").textContent = "v" + C.META.version + " · build " + C.META.build;
-  $("#userInput").value = CASES.currentUser() === "Pengguna" ? "" : CASES.currentUser();
 
   var drop = $("#dzMain"), picker = $("#fileMain");
   drop.addEventListener("click", function(){ picker.click(); });
@@ -3909,10 +4044,6 @@ function init(){
   $("#btnRestoreCases").addEventListener("click", function(){ $("#fileRestoreCases").click(); });
   $("#fileRestoreCases").addEventListener("change", function(e){ if (e.target.files[0]) restoreCases(e.target.files[0]); e.target.value=""; });
   $("#modalClose").addEventListener("click", closeCase);
-  $("#userInput").addEventListener("change", function(e){
-    CASES.setUser(e.target.value);
-    if (RESULT) $("#ovGen").textContent = C.fmtStamp(RESULT.generated.toISOString()) + " · oleh " + CASES.currentUser();
-  });
   $("#btnClearFilters").addEventListener("click", function(){ view.q=""; $("#fSearch").value=""; view.filter="issues"; view.page=0; view.colFilters={}; renderTable(); SessionMgr.broadcastViewState(view); });
 
   var t;
@@ -4034,7 +4165,7 @@ function showSessionFoundModal(s){
       applyFollowedResult(await SessionMgr.loadSnapshot(s));
       renderSessionBanner();
       $("#sessionModalOverlay").classList.remove("open");
-    }catch(e){ alert("Gagal mengikuti sesi: " + ((e&&e.message)||e)); }
+    }catch(e){ gltToast("Gagal mengikuti sesi: " + ((e&&e.message)||e), "err"); }
   };
   $("#btnStartNewSession").onclick = function(){
     $("#sessionModalOverlay").classList.remove("open");
@@ -4072,10 +4203,10 @@ window.__rekonInboundSessionCheck = async function(){
 function wireSessionUI(){
   $("#sessionModalClose").addEventListener("click", function(){ $("#sessionModalOverlay").classList.remove("open"); });
 
-  document.addEventListener("click", function(e){
+  document.addEventListener("click", async function(e){
     var t;
     if ((t = e.target.closest("#btnSessionClose"))){
-      if (confirm("Tutup sesi ini? Follower tidak akan lagi melihat sesi ini sebagai aktif (snapshot tetap tersimpan).")){
+      if (await gltConfirm("Tutup sesi ini? Follower tidak akan lagi melihat sesi ini sebagai aktif (snapshot tetap tersimpan).")){
         SessionMgr.closeSession().then(renderSessionBanner);
       }
       return;
@@ -4088,7 +4219,7 @@ function wireSessionUI(){
     }
     if ((t = e.target.closest("#btnSessionTakeover"))){
       var s = SessionMgr.getCurrent();
-      if (s && confirm("Ambil alih sesi ini sebagai owner? Anda akan bisa upload/replace sumber & menjalankan ulang.")){
+      if (s && await gltConfirm("Ambil alih sesi ini sebagai owner? Anda akan bisa upload/replace sumber & menjalankan ulang.")){
         SessionMgr.takeoverSession(s).then(function(){ setUploadEnabled(true); renderSessionBanner(); });
       }
       return;
@@ -4113,7 +4244,7 @@ function wireSessionUI(){
       renderSessionBanner();
     }else if (p.type === "SESSION_CLOSED"){
       if (SessionMgr.getRole() === "FOLLOWER"){
-        alert("Sesi ini telah ditutup oleh pemiliknya.");
+        gltToast("Sesi ini telah ditutup oleh pemiliknya.", "warn", 10000);
         SessionMgr.leaveSession();
         setUploadEnabled(true);
         renderSessionBanner();
@@ -4141,8 +4272,6 @@ document.addEventListener("DOMContentLoaded", init);
 
 // diekspos supaya refreshAuthUI() (di script terpisah) bisa menyegarkan tabel setelah login
 window.__rekonInboundRefresh = function(){
-  var userInput = document.getElementById("userInput");
-  if (userInput) userInput.value = CASES.currentUser() === "Pengguna" ? "" : CASES.currentUser();
   if (RESULT) renderResults();
 };
 

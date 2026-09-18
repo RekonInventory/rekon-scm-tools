@@ -529,16 +529,56 @@ body:not(.authed) .wrap{display:none}
   font-family:var(--sans);font-size:11.5px;cursor:pointer;color:var(--ink-2)
 }
 #syncStatus{font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+
+/* ---------- Notifikasi & konfirmasi (pengganti alert/confirm/prompt bawaan) ---------- */
+.glt-toast-wrap{position:fixed;top:48px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;max-width:360px}
+.glt-toast{background:#243B5A;color:#fff;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:10px;align-items:flex-start;animation:gltIn .18s ease-out}
+.glt-toast.ok{background:#1B7F4B}
+.glt-toast.err{background:#A83A2A}
+.glt-toast.warn{background:#9A6B00}
+.glt-toast .glt-toast-msg{white-space:pre-line;flex:1}
+.glt-toast .glt-toast-x{cursor:pointer;opacity:.7;font-size:15px;line-height:1}
+.glt-toast .glt-toast-x:hover{opacity:1}
+@keyframes gltIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.glt-confirm-overlay{position:fixed;inset:0;background:rgba(15,20,35,.5);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px}
+.glt-confirm-box{background:#fff;border-radius:10px;max-width:440px;width:100%;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.glt-confirm-box p{white-space:pre-line;font-size:13.5px;color:var(--ink);margin:0 0 18px;line-height:1.5;font-family:var(--sans)}
+.glt-confirm-box input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--rule);border-radius:6px;font-size:13.5px;margin-bottom:16px;font-family:var(--sans)}
+.glt-confirm-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.glt-confirm-actions button{padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--rule);background:#fff;font-family:var(--sans)}
+.glt-confirm-actions button.primary{background:var(--indigo);border-color:var(--indigo);color:#fff}
+.glt-confirm-actions button.danger{background:#A83A2A;border-color:#A83A2A;color:#fff}
+.glt-confirm-actions button:disabled{opacity:.5;cursor:default}
+
+/* ---------- GLT Rekon Suite: nav lintas-tool ---------- */
+body{padding-top:38px}
+.glt-nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:#0f1b2d;color:#dfe6f0;display:flex;align-items:center;gap:20px;padding:9px 20px;font-family:var(--sans);font-size:12.5px;flex-wrap:wrap}
+.glt-nav-brand{color:#fff;font-weight:800;letter-spacing:.03em;text-decoration:none;font-size:13px}
+.glt-nav-brand span{font-weight:400;color:#9fb0c9;margin-left:5px}
+.glt-nav-links{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap}
+.glt-nav-links a{color:#bcd0e8;text-decoration:none;padding:4px 9px;border-radius:5px}
+.glt-nav-links a:hover{background:rgba(255,255,255,.08);color:#fff}
+.glt-nav-links a.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600}
 </style>
 </head>
 <body>
+<div class="glt-nav">
+  <a class="glt-nav-brand" href="index.html">GLT <span>Rekon Suite</span></a>
+  <div class="glt-nav-links">
+    <a href="index.html">Beranda</a>
+    <a href="outbound.html" class="active">Outbound</a>
+    <a href="Rekonsiliasi_Inbound.html">Inbound</a>
+    <a href="inventory.html">Inventory</a>
+    <a href="admin.html">Admin</a>
+  </div>
+</div>
 <div id="authgate">
   <div class="authbox">
     <h2>Rekon GLT</h2>
     <p class="sub">Masuk untuk mengakses data bersama</p>
     <form id="authForm">
-      <label for="authEmail">Email</label>
-      <input type="email" id="authEmail" autocomplete="username" required>
+      <label for="authEmail">Nama Pengguna</label>
+      <input type="text" id="authEmail" autocomplete="username" required>
       <label for="authPass">Kata sandi</label>
       <input type="password" id="authPass" autocomplete="current-password" required>
       <button type="submit" id="authSubmit">Masuk</button>
@@ -565,7 +605,7 @@ body:not(.authed) .wrap{display:none}
   <div class="off-grid">
     <div><span>Run ID</span><b id="offRun">&mdash;</b></div>
     <div><span>Periode</span><b id="offPeriod">&mdash;</b></div>
-    <div><span>Operator</span><b id="offUser" class="link" role="button" tabindex="0" title="Klik untuk mengganti nama operator">&mdash;</b></div>
+    <div><span>Operator</span><b id="offUser" title="Mengikuti nama akun login">&mdash;</b></div>
     <div><span>Versi</span><b id="offVer">&mdash;</b></div>
   </div>
   <div class="off-state" id="offState" data-s="ready">READY</div>
@@ -759,6 +799,23 @@ const SUPABASE_URL = "https://xyvldxygnkwztsmhrwci.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5dmxkeHlnbmt3enRzbWhyd2NpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3MDk3MDgsImV4cCI6MjEwNTI4NTcwOH0.-xXLPyICbdjFAWhBxRDDrnBUBfUT6woSAzDuEReJjuA";
 const supaReady = !/GANTI_DENGAN/.test(SUPABASE_URL) && !/GANTI_DENGAN/.test(SUPABASE_ANON_KEY);
 const supa = supaReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+/* Login pakai NAMA PENGGUNA, bukan email -- lihat penjelasan yang sama di
+   Rekonsiliasi_Inbound.html. Nama tampilan (operator) diambil dari
+   user_metadata.display_name kalau diisi saat akun dibuat di Supabase,
+   atau dari nama pengguna itu sendiri -- TIDAK bisa diganti bebas lagi
+   supaya jejak audit tetap bisa dipercaya. */
+const USERNAME_EMAIL_DOMAIN = "@rekon.local";
+function usernameToEmail(u){
+  const clean = String(u || "").trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "");
+  return clean + USERNAME_EMAIL_DOMAIN;
+}
+function displayNameFromUser(user){
+  if(!user) return "";
+  if(user.user_metadata && user.user_metadata.display_name) return String(user.user_metadata.display_name);
+  const email = user.email || "";
+  return email.slice(0, Math.max(0, email.length - USERNAME_EMAIL_DOMAIN.length)) || email;
+}
 </script>
 <script>
 "use strict";
@@ -775,6 +832,84 @@ const SCHEMA_VERSION = 2;
 
 /* ====================== util ====================== */
 const $ = s => document.querySelector(s);
+
+/* ====================== notifikasi & konfirmasi (pengganti alert/confirm/prompt) ======================
+   Perilaku: gltToast() untuk pesan info/sukses/error yang tidak memblokir.
+   gltChoice()/gltConfirm() untuk konfirmasi (menggantikan window.confirm).
+   gltPromptMatch() untuk konfirmasi ketik-ulang teks (menggantikan window.prompt
+   pada aksi paling merusak, mis. hapus seluruh riwayat). Semua berbasis Promise
+   supaya kode pemanggil tinggal `await`, tidak mengubah alur logika. */
+function gltToastWrap(){
+  let w = document.getElementById("gltToastWrap");
+  if(!w){ w = document.createElement("div"); w.id = "gltToastWrap"; w.className = "glt-toast-wrap"; document.body.appendChild(w); }
+  return w;
+}
+function gltToast(message, type, timeout){
+  const w = gltToastWrap();
+  const el = document.createElement("div");
+  el.className = "glt-toast" + (type ? " " + type : "");
+  const msg = document.createElement("div"); msg.className = "glt-toast-msg"; msg.textContent = message;
+  const x = document.createElement("span"); x.className = "glt-toast-x"; x.textContent = "×";
+  x.addEventListener("click", () => el.remove());
+  el.appendChild(msg); el.appendChild(x);
+  w.appendChild(el);
+  setTimeout(() => el.remove(), timeout || 7000);
+  return el;
+}
+function gltChoice(message, buttons){
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "glt-confirm-overlay";
+    const box = document.createElement("div"); box.className = "glt-confirm-box";
+    const p = document.createElement("p"); p.textContent = message; box.appendChild(p);
+    const actions = document.createElement("div"); actions.className = "glt-confirm-actions";
+    buttons.forEach(b => {
+      const btn = document.createElement("button");
+      btn.textContent = b.label;
+      btn.className = b.danger ? "danger" : (b.primary ? "primary" : "");
+      btn.addEventListener("click", () => close(b.value));
+      actions.appendChild(btn);
+    });
+    box.appendChild(actions); overlay.appendChild(box);
+    function close(val){ overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); }
+    function onKey(e){ if(e.key === "Escape") close(null); }
+    overlay.addEventListener("click", e => { if(e.target === overlay) close(null); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+  });
+}
+function gltConfirm(message, opts){
+  opts = opts || {};
+  return gltChoice(message, [
+    {label: opts.cancelLabel || "Batal", value:false},
+    {label: opts.okLabel || "OK", value:true, danger:!!opts.danger, primary:!opts.danger}
+  ]).then(v => v === true);
+}
+function gltPromptMatch(message, matchValue, opts){
+  opts = opts || {};
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "glt-confirm-overlay";
+    const box = document.createElement("div"); box.className = "glt-confirm-box";
+    const p = document.createElement("p"); p.textContent = message; box.appendChild(p);
+    const input = document.createElement("input");
+    input.type = "text"; input.placeholder = opts.placeholder || ("Ketik " + matchValue);
+    box.appendChild(input);
+    const actions = document.createElement("div"); actions.className = "glt-confirm-actions";
+    const cancelBtn = document.createElement("button"); cancelBtn.textContent = opts.cancelLabel || "Batal";
+    const okBtn = document.createElement("button"); okBtn.textContent = opts.okLabel || "Hapus"; okBtn.className = "danger"; okBtn.disabled = true;
+    actions.appendChild(cancelBtn); actions.appendChild(okBtn); box.appendChild(actions); overlay.appendChild(box);
+    function close(val){ overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); }
+    function onKey(e){ if(e.key === "Escape") close(false); }
+    input.addEventListener("input", () => { okBtn.disabled = input.value.trim().toUpperCase() !== matchValue.toUpperCase(); });
+    okBtn.addEventListener("click", () => close(true));
+    cancelBtn.addEventListener("click", () => close(false));
+    overlay.addEventListener("click", e => { if(e.target === overlay) close(false); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+    setTimeout(() => input.focus(), 30);
+  });
+}
 const ERR_XL = /^#(N\/A|REF!|VALUE!|NAME\?|DIV\/0!|NULL!|NUM!|SPILL!|CALC!)$/i;
 // nilai error Excel seperti #N/A dianggap kosong, bukan nomor container
 const bersihCtr = v => (v===null||v===undefined||!String(v).trim()||ERR_XL.test(String(v).trim())) ? null : v;
@@ -1851,8 +1986,10 @@ async function refreshAuthUI(session){
   currentUser = user;
   if(user){
     document.body.classList.add("authed");
-    $("#acctEmail").textContent = user.email || "";
-    if(!Store.operator()) Store.setOperator(user.email || "");
+    $("#acctEmail").textContent = displayNameFromUser(user);
+    // Selalu disamakan dengan identitas login supaya nama di jejak audit
+    // tidak bisa diganti bebas lewat "klik untuk ganti nama operator".
+    Store.setOperator(displayNameFromUser(user));
     await pullFromSupabase();
     await pushLegacyIfNeeded();
     renderOfficial(); updateNoteCount();
@@ -1874,14 +2011,14 @@ if(!supaReady){
     e.preventDefault();
     $("#authErr").textContent = "";
     $("#authSubmit").disabled = true;
-    const email = $("#authEmail").value.trim();
+    const username = $("#authEmail").value.trim();
     const pass = $("#authPass").value;
-    const {error} = await supa.auth.signInWithPassword({email, password:pass});
-    if(error) $("#authErr").textContent = "Gagal masuk: " + error.message;
+    const {error} = await supa.auth.signInWithPassword({email: usernameToEmail(username), password:pass});
+    if(error) $("#authErr").textContent = "Nama pengguna atau kata sandi salah, atau akun belum dibuat. Hubungi admin untuk reset kata sandi.";
     $("#authSubmit").disabled = false;
   });
   $("#btnSignOut").addEventListener("click", async ()=>{
-    if(!confirm("Keluar dari akun ini?")) return;
+    if(!(await gltConfirm("Keluar dari akun ini?"))) return;
     await supa.auth.signOut();
   });
 }
@@ -3326,11 +3463,12 @@ function renderRunList(){
       '<button class="btn mini danger" data-hapus="' + esc(x.runId) + '">Hapus</button>' +
       "</div>";
   }).join("");
-  el.querySelectorAll("[data-buka]").forEach(b => b.addEventListener("click", ()=>{
-    if(!R){ alert("Jalankan pengecekan dulu supaya ada data untuk dipasangkan dengan catatan run itu."); return; }
+  el.querySelectorAll("[data-buka]").forEach(b => b.addEventListener("click", async ()=>{
+    if(!R){ gltToast("Jalankan pengecekan dulu supaya ada data untuk dipasangkan dengan catatan run itu.", "warn"); return; }
     const r = Store.run(b.dataset.buka); if(!r) return;
-    if(!confirm("Buka catatan dan penyesuaian dari " + b.dataset.buka + " pada hasil yang sedang tampil?\n\n" +
-                "Catatan run aktif (" + (RUN ? RUN.runId : "-") + ") tetap tersimpan dan tidak diubah.")) return;
+    const ok = await gltConfirm("Buka catatan dan penyesuaian dari " + b.dataset.buka + " pada hasil yang sedang tampil?\n\n" +
+                "Catatan run aktif (" + (RUN ? RUN.runId : "-") + ") tetap tersimpan dan tidak diubah.");
+    if(!ok) return;
     persistRun();
     bindRun(r);
     renderOfficial(); updateNoteCount(); gambarUlangSemua(); renderRunList();
@@ -3339,10 +3477,11 @@ function renderRunList(){
     const r = Store.run(b.dataset.unduh); if(!r) return;
     unduhJson(r, "Rekon_GLT_Run_" + r.runId + ".json");
   }));
-  el.querySelectorAll("[data-hapus]").forEach(b => b.addEventListener("click", ()=>{
+  el.querySelectorAll("[data-hapus]").forEach(b => b.addEventListener("click", async ()=>{
     const id = b.dataset.hapus;
-    if(!confirm("Hapus run " + id + " beserta catatan, penyesuaian, dan jejak auditnya?\n" +
-                "Sebaiknya cadangkan dulu. Tindakan ini tidak bisa dibatalkan.")) return;
+    const ok = await gltConfirm("Hapus run " + id + " beserta catatan, penyesuaian, dan jejak auditnya?\n" +
+                "Sebaiknya cadangkan dulu. Tindakan ini tidak bisa dibatalkan.", {danger:true, okLabel:"Hapus"});
+    if(!ok) return;
     Store.dropRun(id);
     if(RUN && RUN.runId === id){ bindRun(runKosong(id + "-DIHAPUS", {createdAt:nowIso()})); RUN = null; }
     renderOfficial(); updateNoteCount(); renderRunList();
@@ -3615,10 +3754,11 @@ function eksporSemua(){
 }
 
 /* ============================ 12. PEMASANGAN ============================ */
-function paksaJalan(tab){
-  if(!confirm("Jalankan Rekon " + (tab === "A" ? "1" : "2") + " walaupun periode sumber tidak beririsan?\n\n" +
+async function paksaJalan(tab){
+  const ok = await gltConfirm("Jalankan Rekon " + (tab === "A" ? "1" : "2") + " walaupun periode sumber tidak beririsan?\n\n" +
               "Hasilnya akan menampilkan hampir semua baris sebagai tidak ada padanan. " +
-              "Ini hanya berguna untuk pemeriksaan manual.")) return;
+              "Ini hanya berguna untuk pemeriksaan manual.", {danger:true, okLabel:"Tetap jalankan"});
+  if(!ok) return;
   paksaTab[tab] = true;
   jejak("PAKSA JALAN", tab, "", "Operator menjalankan Rekon " + (tab === "A" ? "1" : "2") +
         " meski periode sumber tidak beririsan", "", "", "");
@@ -3627,22 +3767,9 @@ function paksaJalan(tab){
 }
 const paksaTab = {A:false, B:false};
 
-function tanyaOperator(){
-  const kini = Store.operator();
-  const n = window.prompt("Nama operator (dicatat pada setiap perubahan dan jejak audit):", kini || "");
-  if(n === null) return;
-  Store.setOperator(n.trim());
-  if(RUN){ jejak("OPERATOR DIUBAH", "", "", "Nama operator", kini || "(kosong)", n.trim() || "(kosong)", ""); persistRun(); }
-  renderOfficial();
-}
-
 (function pasang(){
   renderOfficial();
   updateNoteCount();
-
-  $("#offUser").addEventListener("click", tanyaOperator);
-  $("#offUser").addEventListener("keydown", e=>{
-    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); tanyaOperator(); }});
 
   $("#valClose").addEventListener("click", ()=>$("#valPanel").classList.remove("on"));
   $("#runClose").addEventListener("click", ()=>$("#runPanel").classList.remove("on"));
@@ -3675,23 +3802,30 @@ function tanyaOperator(){
     const f = e.target.files[0]; e.target.value = "";
     if(!f) return;
     const rd = new FileReader();
-    rd.onload = ()=>{
+    rd.onload = async ()=>{
       let b;
       try{ b = JSON.parse(rd.result); }
-      catch(err){ alert("Berkas cadangan tidak bisa dibaca sebagai JSON."); return; }
+      catch(err){ gltToast("Berkas cadangan tidak bisa dibaca sebagai JSON.", "err"); return; }
       const cek = periksaBackup(b);
       const ringkas = "PEMERIKSAAN CADANGAN\n\n" + cek.pesan.join("\n");
-      if(!cek.ok){ alert(ringkas + "\n\nPemulihan dibatalkan."); return; }
-      const ganti = window.confirm(ringkas +
-        "\n\nOK  = GANTI TOTAL (seluruh riwayat run sekarang dihapus lebih dulu)\n" +
-        "Batal = gabungkan (run yang Run ID-nya sudah ada dilewati)");
-      if(ganti && !window.confirm("Konfirmasi sekali lagi: seluruh riwayat run yang ada sekarang akan DIHAPUS " +
-        "dan diganti isi cadangan. Lanjutkan?")) return;
+      if(!cek.ok){ gltToast(ringkas + "\n\nPemulihan dibatalkan.", "err", 12000); return; }
+      const pilihan = await gltChoice(ringkas + "\n\nPilih cara pemulihan:", [
+        {label:"Batal", value:"batal"},
+        {label:"Gabungkan", value:"gabung", primary:true},
+        {label:"Ganti Total", value:"ganti", danger:true}
+      ]);
+      if(!pilihan || pilihan === "batal") return;
+      const ganti = pilihan === "ganti";
+      if(ganti){
+        const pastikan = await gltConfirm("Konfirmasi sekali lagi: seluruh riwayat run yang ada sekarang akan DIHAPUS " +
+          "dan diganti isi cadangan. Lanjutkan?", {danger:true, okLabel:"Ya, ganti total"});
+        if(!pastikan) return;
+      }
       const hasil = pulihkanBackup(b, ganti);
       if(RUN){ jejak("PEMULIHAN CADANGAN", "", "", hasil.hasil || "", "", ganti ? "ganti total" : "gabung", ""); persistRun(); }
       renderOfficial(); updateNoteCount(); renderRunList(); renderDataPanel();
       if(R) gambarUlangSemua();
-      alert("Selesai.\n\n" + (hasil.hasil || ""));
+      gltToast("Selesai.\n\n" + (hasil.hasil || ""), "ok");
     };
     rd.readAsText(f);
   });
@@ -3706,9 +3840,9 @@ function tanyaOperator(){
   });
 
   /* -- kelola data -- */
-  $("#dClearSession").addEventListener("click", ()=>{
+  $("#dClearSession").addEventListener("click", async ()=>{
     if(!R){ $("#noteCount").textContent = "tidak ada hasil untuk dibersihkan"; return; }
-    if(!confirm("Kosongkan tampilan hasil di layar?\n\nCatatan, penyesuaian, dan riwayat run TIDAK dihapus.")) return;
+    if(!(await gltConfirm("Kosongkan tampilan hasil di layar?\n\nCatatan, penyesuaian, dan riwayat run TIDAK dihapus."))) return;
     persistRun();
     R = null; VAL = null; active = null; filterEksepsi = null;
     $("#results").classList.remove("on");
@@ -3717,39 +3851,41 @@ function tanyaOperator(){
     setState("ready", "READY");
     $("#noteCount").textContent = "tampilan dibersihkan, data tersimpan aman";
   });
-  $("#dClearRunNotes").addEventListener("click", ()=>{
-    if(!RUN){ alert("Belum ada run aktif."); return; }
+  $("#dClearRunNotes").addEventListener("click", async ()=>{
+    if(!RUN){ gltToast("Belum ada run aktif.", "warn"); return; }
     const n = Object.keys(notes).length, m = Object.keys(adjust).length;
-    if(!n && !m){ alert("Run " + RUN.runId + " belum punya catatan atau penyesuaian."); return; }
-    if(!confirm("Kosongkan " + n + " catatan dan " + m + " penyesuaian pada run " + RUN.runId + "?\n\n" +
-                "Run lain tidak terpengaruh. Jejak audit tetap disimpan. Sebaiknya cadangkan dulu.")) return;
+    if(!n && !m){ gltToast("Run " + RUN.runId + " belum punya catatan atau penyesuaian.", "warn"); return; }
+    const ok = await gltConfirm("Kosongkan " + n + " catatan dan " + m + " penyesuaian pada run " + RUN.runId + "?\n\n" +
+                "Run lain tidak terpengaruh. Jejak audit tetap disimpan. Sebaiknya cadangkan dulu.", {danger:true, okLabel:"Kosongkan"});
+    if(!ok) return;
     jejak("CATATAN RUN DIKOSONGKAN", "", "", n + " catatan dan " + m + " penyesuaian dihapus", "", "", "");
     notes = {}; adjust = {}; notesMeta = {}; adjMeta = {};
     persistRun(); updateNoteCount();
     if(R) gambarUlangSemua();
   });
-  $("#dDeleteRun").addEventListener("click", ()=>{
-    if(!RUN){ alert("Belum ada run aktif."); return; }
+  $("#dDeleteRun").addEventListener("click", async ()=>{
+    if(!RUN){ gltToast("Belum ada run aktif.", "warn"); return; }
     const id = RUN.runId;
-    if(!confirm("Hapus run " + id + " seluruhnya (metadata, catatan, penyesuaian, jejak audit)?\n\n" +
-                "Sebaiknya cadangkan dulu. Tindakan ini tidak bisa dibatalkan.")) return;
+    const ok = await gltConfirm("Hapus run " + id + " seluruhnya (metadata, catatan, penyesuaian, jejak audit)?\n\n" +
+                "Sebaiknya cadangkan dulu. Tindakan ini tidak bisa dibatalkan.", {danger:true, okLabel:"Hapus"});
+    if(!ok) return;
     Store.dropRun(id);
     RUN = null; bindRun(runKosong("(tidak tersimpan)", {createdAt:nowIso()})); RUN = null;
     renderOfficial(); updateNoteCount(); renderRunList(); renderDataPanel();
     if(R) gambarUlangSemua();
   });
-  $("#dDeleteAll").addEventListener("click", ()=>{
+  $("#dDeleteAll").addEventListener("click", async ()=>{
     const idx = Store.index();
-    if(!idx.length){ alert("Tidak ada riwayat run yang tersimpan."); return; }
-    const jawab = window.prompt("PERINGATAN KERAS\n\nIni menghapus SELURUH riwayat: " + idx.length +
+    if(!idx.length){ gltToast("Tidak ada riwayat run yang tersimpan.", "warn"); return; }
+    const jawab = await gltPromptMatch("PERINGATAN KERAS\n\nIni menghapus SELURUH riwayat: " + idx.length +
       " run beserta catatan, penyesuaian, dan jejak audit.\nTindakan ini tidak bisa dibatalkan.\n\n" +
-      "Ketik  HAPUS SEMUA  untuk melanjutkan:");
-    if(String(jawab || "").trim().toUpperCase() !== "HAPUS SEMUA"){ alert("Dibatalkan."); return; }
+      "Ketik HAPUS SEMUA untuk melanjutkan:", "HAPUS SEMUA");
+    if(!jawab){ return; }
     Store.dropAll();
     RUN = null; notes = {}; adjust = {}; notesMeta = {}; adjMeta = {}; audit = [];
     renderOfficial(); updateNoteCount(); renderRunList(); renderDataPanel();
     if(R) gambarUlangSemua();
-    alert("Seluruh riwayat dihapus.");
+    gltToast("Seluruh riwayat dihapus.", "ok");
   });
 
   /* -- laci rincian -- */

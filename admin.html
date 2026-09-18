@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manajemen Pengguna — GLT Rekon Suite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0f1b2d; --ink-2:#1c2c44; --paper:#eef1f6; --card:#ffffff;
+  --line:#dde3ec; --accent:#2f6fed; --muted:#5b6b85; --red:#c22b2b; --red-bg:#fbe7e7;
+  --green:#1a8a4a; --green-bg:#e6f6ec;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding-top:38px}
+
+.glt-nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:var(--ink);color:#dfe6f0;display:flex;align-items:center;gap:20px;padding:9px 20px;font-size:12.5px;flex-wrap:wrap}
+.glt-nav-brand{color:#fff;font-weight:800;letter-spacing:.03em;text-decoration:none;font-size:13px}
+.glt-nav-brand span{font-weight:400;color:#9fb0c9;margin-left:5px}
+.glt-nav-links{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap}
+.glt-nav-links a{color:#bcd0e8;text-decoration:none;padding:4px 9px;border-radius:5px}
+.glt-nav-links a:hover{background:rgba(255,255,255,.08);color:#fff}
+.glt-nav-links a.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600}
+
+#authgate{position:fixed;inset:38px 0 0 0;background:var(--paper);z-index:900;display:flex;align-items:center;justify-content:center;padding:20px}
+body.authed #authgate{display:none}
+body:not(.authed) .wrap{display:none}
+.authbox{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 16px rgba(15,27,45,.08);padding:32px 30px;width:100%;max-width:340px}
+.authbox h2{font-size:19px;font-weight:700;margin:0 0 4px}
+.authbox p.sub{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 20px}
+.authbox label{display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin:14px 0 5px}
+.authbox input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:13.5px;background:#fbfcfe;color:var(--ink)}
+.authbox button{width:100%;margin-top:20px;padding:10px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;font-weight:600;font-size:13.5px;cursor:pointer}
+.autherr{color:var(--red);font-size:12px;margin-top:12px;min-height:14px}
+
+.wrap{max-width:840px;margin:0 auto;padding:30px 20px 60px}
+.wrap h1{font-size:20px;margin:0 0 4px}
+.wrap .sub{color:var(--muted);font-size:12.8px;margin:0 0 24px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px 22px;margin-bottom:20px}
+.panel h2{font-size:14px;margin:0 0 14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:140px}
+.field label{font-size:11px;color:var(--muted);font-weight:600}
+.field input{padding:8px 9px;border:1px solid var(--line);border-radius:6px;font-size:13px}
+.btn{padding:9px 16px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:600;font-size:13px;cursor:pointer}
+.btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+.btn.danger{background:#fff;color:var(--red);border-color:#eec7c7}
+.btn:disabled{opacity:.55;cursor:default}
+.msg{font-size:12.5px;margin-top:10px;min-height:14px}
+.msg.ok{color:var(--green)}
+.msg.err{color:var(--red)}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
+th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+td.actions{white-space:nowrap;display:flex;gap:6px}
+.badge{display:inline-block;background:var(--green-bg);color:var(--green);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px}
+.notadmin{background:var(--red-bg);color:var(--red);border:1px solid #eec7c7;border-radius:8px;padding:14px 16px;font-size:13px}
+
+.glt-toast-wrap{position:fixed;top:48px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;max-width:360px}
+.glt-toast{background:var(--ink);color:#fff;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:10px;align-items:flex-start;animation:gltIn .18s ease-out}
+.glt-toast.ok{background:var(--green)}
+.glt-toast.err{background:var(--red)}
+.glt-toast .glt-toast-msg{white-space:pre-line;flex:1}
+.glt-toast .glt-toast-x{cursor:pointer;opacity:.7;font-size:15px;line-height:1}
+.glt-toast .glt-toast-x:hover{opacity:1}
+@keyframes gltIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.glt-confirm-overlay{position:fixed;inset:0;background:rgba(15,20,35,.5);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px}
+.glt-confirm-box{background:#fff;border-radius:10px;max-width:420px;width:100%;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.glt-confirm-box p{white-space:pre-line;font-size:13.5px;color:var(--ink);margin:0 0 18px;line-height:1.5}
+.glt-confirm-box label{display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin:0 0 5px}
+.glt-confirm-box input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:13.5px;margin-bottom:16px}
+.glt-confirm-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.glt-confirm-actions button{padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--line);background:#fff}
+.glt-confirm-actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.glt-confirm-actions button.danger{background:var(--red);border-color:var(--red);color:#fff}
+</style>
+</head>
+<body>
+
+<div class="glt-nav">
+  <a class="glt-nav-brand" href="index.html">GLT <span>Rekon Suite</span></a>
+  <div class="glt-nav-links">
+    <a href="index.html">Beranda</a>
+    <a href="outbound.html">Outbound</a>
+    <a href="Rekonsiliasi_Inbound.html">Inbound</a>
+    <a href="inventory.html">Inventory</a>
+    <a href="admin.html" class="active">Admin</a>
+  </div>
+</div>
+
+<div id="authgate">
+  <div class="authbox">
+    <h2>Manajemen Pengguna</h2>
+    <p class="sub">Masuk dengan akun admin</p>
+    <form id="authForm">
+      <label for="authEmail">Nama Pengguna</label>
+      <input type="text" id="authEmail" autocomplete="username" required>
+      <label for="authPass">Kata sandi</label>
+      <input type="password" id="authPass" autocomplete="current-password" required>
+      <button type="submit" id="authSubmit">Masuk</button>
+      <div class="autherr" id="authErr"></div>
+    </form>
+  </div>
+</div>
+
+<div class="wrap">
+  <h1>Manajemen Pengguna</h1>
+  <div class="sub">Tambah akun, ganti nama tampilan, atau reset kata sandi kolega — tanpa perlu buka Supabase Dashboard.</div>
+
+  <div id="notAdminBox" class="notadmin" style="display:none">
+    Anda masuk sebagai <b id="whoAmI"></b>, tapi akun ini belum ditandai sebagai admin.
+    Minta admin yang sudah ada untuk memberi akses lewat halaman ini, atau set langsung
+    <code>user_metadata.is_admin = true</code> di Supabase Dashboard untuk akun pertama.
+  </div>
+
+  <div id="adminArea" style="display:none">
+    <div class="panel">
+      <h2>Tambah pengguna baru</h2>
+      <form id="createForm">
+        <div class="row">
+          <div class="field"><label>Nama Pengguna</label><input id="newUsername" placeholder="budi.santoso" required></div>
+          <div class="field"><label>Nama Tampilan</label><input id="newDisplayName" placeholder="Budi Santoso"></div>
+          <div class="field"><label>Kata Sandi</label><input id="newPassword" type="password" placeholder="min. 6 karakter" required></div>
+          <button class="btn" type="submit">Tambah</button>
+        </div>
+      </form>
+      <div class="msg" id="createMsg"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Daftar pengguna <button class="btn ghost" id="btnReload" type="button" style="margin-left:8px;padding:3px 10px;font-size:11px;">Segarkan</button></h2>
+      <table>
+        <thead><tr><th>Nama Pengguna</th><th>Nama Tampilan</th><th>Admin</th><th>Dibuat</th><th>Login terakhir</th><th>Aksi</th></tr></thead>
+        <tbody id="userTbody"></tbody>
+      </table>
+      <div class="msg" id="listMsg"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = "https://xyvldxygnkwztsmhrwci.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5dmxkeHlnbmt3enRzbWhyd2NpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3MDk3MDgsImV4cCI6MjEwNTI4NTcwOH0.-xXLPyICbdjFAWhBxRDDrnBUBfUT6woSAzDuEReJjuA";
+const USERNAME_EMAIL_DOMAIN = "@rekon.local";
+function usernameToEmail(u){
+  const clean = String(u || "").trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "");
+  return clean + USERNAME_EMAIL_DOMAIN;
+}
+function displayNameFromUser(user){
+  if(!user) return "";
+  if(user.user_metadata && user.user_metadata.display_name) return String(user.user_metadata.display_name);
+  const email = user.email || "";
+  return email.slice(0, Math.max(0, email.length - USERNAME_EMAIL_DOMAIN.length)) || email;
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function gltToastWrap(){
+  let w = document.getElementById("gltToastWrap");
+  if(!w){ w = document.createElement("div"); w.id = "gltToastWrap"; w.className = "glt-toast-wrap"; document.body.appendChild(w); }
+  return w;
+}
+function gltToast(message, type, timeout){
+  const w = gltToastWrap();
+  const el = document.createElement("div");
+  el.className = "glt-toast" + (type ? " " + type : "");
+  const msg = document.createElement("div"); msg.className = "glt-toast-msg"; msg.textContent = message;
+  const x = document.createElement("span"); x.className = "glt-toast-x"; x.textContent = "×";
+  x.addEventListener("click", () => el.remove());
+  el.appendChild(msg); el.appendChild(x);
+  w.appendChild(el);
+  setTimeout(() => el.remove(), timeout || 7000);
+  return el;
+}
+function gltConfirm(message, opts){
+  opts = opts || {};
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "glt-confirm-overlay";
+    overlay.innerHTML = '<div class="glt-confirm-box"><p></p><div class="glt-confirm-actions">' +
+      '<button class="glt-cancel">' + (opts.cancelLabel || "Batal") + '</button>' +
+      '<button class="glt-ok ' + (opts.danger ? "danger" : "primary") + '">' + (opts.okLabel || "OK") + '</button>' +
+      '</div></div>';
+    overlay.querySelector("p").textContent = message;
+    function close(val){ overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); }
+    function onKey(e){ if(e.key === "Escape") close(false); }
+    overlay.querySelector(".glt-ok").addEventListener("click", () => close(true));
+    overlay.querySelector(".glt-cancel").addEventListener("click", () => close(false));
+    overlay.addEventListener("click", e => { if(e.target === overlay) close(false); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+  });
+}
+function gltPrompt(message, opts){
+  opts = opts || {};
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "glt-confirm-overlay";
+    overlay.innerHTML = '<div class="glt-confirm-box"><p></p>' +
+      (opts.label ? '<label></label>' : '') +
+      '<input type="' + (opts.password ? "password" : "text") + '">' +
+      '<div class="glt-confirm-actions"><button class="glt-cancel">Batal</button><button class="glt-ok primary">' + (opts.okLabel || "OK") + '</button></div></div>';
+    overlay.querySelector("p").textContent = message;
+    if(opts.label) overlay.querySelector("label").textContent = opts.label;
+    const input = overlay.querySelector("input");
+    if(opts.value) input.value = opts.value;
+    if(opts.placeholder) input.placeholder = opts.placeholder;
+    function close(val){ overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); }
+    function onKey(e){ if(e.key === "Escape") close(null); if(e.key === "Enter"){ e.preventDefault(); close(input.value); } }
+    overlay.querySelector(".glt-ok").addEventListener("click", () => close(input.value));
+    overlay.querySelector(".glt-cancel").addEventListener("click", () => close(null));
+    overlay.addEventListener("click", e => { if(e.target === overlay) close(null); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+    setTimeout(() => input.focus(), 30);
+  });
+}
+function fmtStamp(iso){ if(!iso) return "—"; const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"}); }
+
+const supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let currentUser = null;
+
+async function callAdmin(action, payload){
+  const { data: sessionData } = await supa.auth.getSession();
+  const token = sessionData.session ? sessionData.session.access_token : null;
+  const res = await fetch(SUPABASE_URL + "/functions/v1/admin-users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token, "apikey": SUPABASE_ANON_KEY },
+    body: JSON.stringify(Object.assign({action}, payload))
+  });
+  const json = await res.json().catch(()=>({error:"Respons server tidak valid."}));
+  if(!res.ok) throw new Error(json.error || ("HTTP " + res.status));
+  return json;
+}
+
+async function loadUsers(){
+  const tbody = document.getElementById("userTbody");
+  const msg = document.getElementById("listMsg");
+  msg.textContent = "Memuat…"; msg.className = "msg";
+  try{
+    const { users } = await callAdmin("list", {});
+    tbody.innerHTML = users.map(u => (
+      "<tr data-id=\"" + esc(u.id) + "\">" +
+      "<td>" + esc(u.username) + "</td>" +
+      "<td>" + esc(u.display_name) + "</td>" +
+      "<td>" + (u.is_admin ? '<span class="badge">ADMIN</span>' : "") + "</td>" +
+      "<td>" + esc(fmtStamp(u.created_at)) + "</td>" +
+      "<td>" + esc(fmtStamp(u.last_sign_in_at)) + "</td>" +
+      '<td class="actions">' +
+        '<button class="btn ghost" data-act="reset" style="padding:5px 9px;font-size:11.5px;">Reset sandi</button>' +
+        '<button class="btn ghost" data-act="rename" style="padding:5px 9px;font-size:11.5px;">Ganti nama</button>' +
+        (u.id === currentUser.id ? "" : '<button class="btn danger" data-act="delete" style="padding:5px 9px;font-size:11.5px;">Hapus</button>') +
+      "</td></tr>"
+    )).join("");
+    msg.textContent = "";
+  }catch(e){
+    msg.textContent = "Gagal memuat daftar pengguna: " + e.message;
+    msg.className = "msg err";
+  }
+}
+
+document.getElementById("userTbody").addEventListener("click", async (e)=>{
+  const btn = e.target.closest("button[data-act]");
+  if(!btn) return;
+  const tr = btn.closest("tr");
+  const id = tr.dataset.id;
+  const username = tr.children[0].textContent;
+  if(btn.dataset.act === "reset"){
+    const pass = await gltPrompt("Kata sandi baru untuk " + username + ":", {label:"Kata sandi baru (minimal 6 karakter)", password:true, okLabel:"Ganti"});
+    if(!pass) return;
+    try{ await callAdmin("resetPassword", {userId:id, newPassword:pass}); gltToast("Kata sandi berhasil diganti.", "ok"); }
+    catch(err){ gltToast("Gagal: " + err.message, "err"); }
+  }else if(btn.dataset.act === "rename"){
+    const name = await gltPrompt("Nama tampilan baru untuk " + username + ":", {label:"Nama tampilan", value:tr.children[1].textContent, okLabel:"Simpan"});
+    if(name === null) return;
+    try{ await callAdmin("setDisplayName", {userId:id, display_name:name}); loadUsers(); }
+    catch(err){ gltToast("Gagal: " + err.message, "err"); }
+  }else if(btn.dataset.act === "delete"){
+    const ok = await gltConfirm("Hapus pengguna " + username + "? Tindakan ini tidak bisa dibatalkan.\n\nCatatan: kalau pengguna ini pernah membuat run/case, penghapusan bisa gagal karena data tersebut masih menautkan ke akunnya.", {danger:true, okLabel:"Hapus"});
+    if(!ok) return;
+    try{ await callAdmin("delete", {userId:id}); loadUsers(); }
+    catch(err){ gltToast("Gagal: " + err.message, "err"); }
+  }
+});
+
+document.getElementById("createForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const msg = document.getElementById("createMsg");
+  msg.textContent = ""; msg.className = "msg";
+  const username = document.getElementById("newUsername").value;
+  const display_name = document.getElementById("newDisplayName").value;
+  const password = document.getElementById("newPassword").value;
+  try{
+    await callAdmin("create", {username, display_name, password});
+    msg.textContent = "Pengguna " + username + " berhasil dibuat.";
+    msg.className = "msg ok";
+    document.getElementById("createForm").reset();
+    loadUsers();
+  }catch(err){
+    msg.textContent = "Gagal: " + err.message;
+    msg.className = "msg err";
+  }
+});
+
+document.getElementById("btnReload").addEventListener("click", loadUsers);
+
+async function refreshAuthUI(session){
+  const user = session && session.user ? session.user : null;
+  currentUser = user;
+  if(user){
+    document.body.classList.add("authed");
+    const isAdmin = !!(user.user_metadata && user.user_metadata.is_admin === true);
+    document.getElementById("whoAmI").textContent = displayNameFromUser(user);
+    document.getElementById("notAdminBox").style.display = isAdmin ? "none" : "block";
+    document.getElementById("adminArea").style.display = isAdmin ? "block" : "none";
+    if(isAdmin) loadUsers();
+  }else{
+    document.body.classList.remove("authed");
+  }
+}
+
+supa.auth.onAuthStateChange((_evt, session) => refreshAuthUI(session));
+supa.auth.getSession().then(({data}) => refreshAuthUI(data.session));
+
+document.getElementById("authForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const errEl = document.getElementById("authErr"), btn = document.getElementById("authSubmit");
+  errEl.textContent = ""; btn.disabled = true;
+  const username = document.getElementById("authEmail").value.trim();
+  const pass = document.getElementById("authPass").value;
+  const { error } = await supa.auth.signInWithPassword({ email: usernameToEmail(username), password: pass });
+  if(error) errEl.textContent = "Nama pengguna atau kata sandi salah.";
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>
