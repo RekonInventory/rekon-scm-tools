@@ -124,6 +124,30 @@ select:focus,input:focus{outline:2px solid var(--teal);outline-offset:-1px;borde
 .status-msg{font-size:12.5px;color:var(--ink-soft)}
 .status-msg.bad{color:var(--err);font-weight:500}
 
+/* ---------- Gerbang masuk (login) ---------- */
+#authgate{position:fixed;inset:0;background:var(--paper);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px}
+body.authed #authgate{display:none}
+body:not(.authed) .band, body:not(.authed) .wrap{display:none}
+.authbox{background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 2px 16px rgba(14,26,43,.08);padding:32px 30px;width:100%;max-width:340px}
+.authbox h2{font-size:19px;font-weight:600;margin:0 0 4px;color:var(--ink)}
+.authbox p.sub{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 20px}
+.authbox label{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin:14px 0 5px}
+.authbox input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:5px;font-family:var(--sans);font-size:13.5px;background:#fff;color:var(--ink)}
+.authbox button{width:100%;margin-top:20px;padding:10px;border:1px solid var(--teal);border-radius:6px;background:var(--teal);color:#fff;font-family:var(--sans);font-weight:600;font-size:13.5px;cursor:pointer}
+.authbox button:disabled{opacity:.6;cursor:default}
+.autherr{color:var(--err);font-size:12px;margin-top:12px;min-height:14px}
+.acct{font-family:var(--mono);font-size:11px;color:#8FA3BC;display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-top:6px}
+.acct button{border:1px solid #3C5069;background:transparent;color:#DCE6F0;border-radius:5px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:var(--sans)}
+#syncStatus{font-family:var(--mono);font-size:10.5px;color:#8FA3BC}
+.runhistpanel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin:14px 0;display:none}
+.runhistpanel.on{display:block}
+.runhistpanel h3{font-size:14px;margin:0 0 10px}
+.runrow{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px;flex-wrap:wrap}
+.runrow:last-child{border-bottom:none}
+.runrow .rid{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+.runrow .rmeta{flex:1;min-width:180px}
+.runrow .rmeta small{display:block;color:var(--ink-soft);font-size:11px;margin-top:2px}
+
 /* ---------- Ledger strip (signature) ---------- */
 .ledger{background:var(--card);border:1px solid var(--line);border-radius:8px;
   padding:18px;margin-bottom:16px}
@@ -225,16 +249,32 @@ td.nowrap{white-space:nowrap}
 </head>
 <body>
 
+<div id="authgate">
+  <div class="authbox">
+    <h2>Cek Inventory vs SCM</h2>
+    <p class="sub">Masuk untuk mengakses data bersama</p>
+    <form id="authForm">
+      <label for="authEmail">Email</label>
+      <input type="email" id="authEmail" autocomplete="username" required>
+      <label for="authPass">Kata sandi</label>
+      <input type="password" id="authPass" autocomplete="current-password" required>
+      <button type="submit" id="authSubmit">Masuk</button>
+      <div class="autherr" id="authErr"></div>
+    </form>
+  </div>
+</div>
+
 <div class="band">
   <div class="band-in">
     <div>
       <div class="eyebrow">Rekonsiliasi PEB · Inventory ↔ SCM</div>
       <h1>Cek Inventory vs Laporan SCM</h1>
-      <div class="sub">Cocokkan nomor PEB dan jumlah karton antara laporan gudang dan laporan SCM. Semua diproses di browser — file tidak dikirim ke mana pun.</div>
+      <div class="sub">Cocokkan nomor PEB dan jumlah karton antara laporan gudang dan laporan SCM. File diproses di browser — hasil &amp; catatan disinkronkan ke server bersama.</div>
     </div>
     <div class="meta">
       <div>Dijalankan <b id="runDate">—</b></div>
       <div>Baris terbaca <b id="runRows">0</b></div>
+      <div class="acct"><span id="syncStatus"></span><span id="acctEmail"></span><button type="button" id="btnSignOut">Keluar</button></div>
     </div>
   </div>
 </div>
@@ -332,8 +372,14 @@ td.nowrap{white-space:nowrap}
 
       <div class="tools">
         <input type="text" id="search" placeholder="Cari PEB, AJU, job, atau nama shipper…">
+        <button class="btn btn-ghost btn-sm" id="btnSaveRun">Simpan run</button>
+        <button class="btn btn-ghost btn-sm" id="btnRunHist">Riwayat run</button>
         <button class="btn btn-ghost btn-sm" id="btnXlsx">Unduh hasil (.xlsx)</button>
         <button class="btn btn-ghost btn-sm" id="btnCsv">Unduh hasil (.csv)</button>
+      </div>
+      <div class="runhistpanel" id="runHistPanel">
+        <h3>Run tersimpan</h3>
+        <div id="runHistList"></div>
       </div>
 
       <div class="tbl-wrap">
@@ -441,6 +487,17 @@ td.nowrap{white-space:nowrap}
 </div>
 
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ====================== koneksi server (Supabase) ======================
+   Kunci "anon" aman ditaruh di kode client-side selama Row Level Security
+   aktif di sisi server. storageKey default (tidak diberi nama khusus) supaya
+   sesi login dibagikan dengan outbound.html / Rekonsiliasi_Inbound.html. */
+const SUPABASE_URL = "https://xyvldxygnkwztsmhrwci.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5dmxkeHlnbmt3enRzbWhyd2NpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3MDk3MDgsImV4cCI6MjEwNTI4NTcwOH0.-xXLPyICbdjFAWhBxRDDrnBUBfUT6woSAzDuEReJjuA";
+const supaReady = !/GANTI_DENGAN/.test(SUPABASE_URL) && !/GANTI_DENGAN/.test(SUPABASE_ANON_KEY);
+const supa = supaReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+</script>
 <script>
 /* ================= Konfigurasi pencocokan kolom ================= */
 const PEB_HINTS  = ['peb','nopen','no pen','pen no'];
@@ -526,6 +583,190 @@ const STATUS = {
   NO_INV:           {label:'Tidak ada di Inventory',color:'#6D28D9', cls:'t-pur'},
   INBOUND:          {label:'Inbound tanggal ini',  color:'#0B6E5F', cls:'t-teal'}
 };
+
+/* ================= Akun & sinkronisasi server (Supabase) =================
+   Tool ini semula tidak menyimpan apa pun (semua hilang saat refresh). Yang
+   ditambahkan di sini murni fitur baru: tombol "Simpan run" mengirim snapshot
+   hasil (rows, listing, catatan) sebagai satu baris ke tabel inv_runs supaya
+   bisa dibuka lagi oleh siapa pun yang login, tanpa perlu upload ulang file. */
+let currentUser = null;
+let currentRunId = null;   // id run yang sedang aktif di server; null = belum pernah disimpan
+
+function setSyncStatus(text, isErr){
+  const el = document.getElementById('syncStatus');
+  if(!el) return;
+  el.textContent = text || '';
+  el.style.color = isErr ? '#B91C1C' : '';
+}
+
+function runSnapshot(){
+  return {
+    ref_date: state.refDate || null,
+    rows: state.rows,
+    listing: state.listing,
+    notes: Object.fromEntries(state.notes),
+    file_names: {
+      inv: state.inv.map(f=>f.name), scm: state.scm.map(f=>f.name),
+      inb: state.inb.map(f=>f.name), out: state.out.map(f=>f.name)
+    },
+    counts: counts()
+  };
+}
+
+async function saveRun(){
+  if(!supaReady || !currentUser){ alert('Masuk dulu untuk menyimpan run.'); return; }
+  if(!state.rows.length){ alert('Jalankan pengecekan dulu sebelum menyimpan.'); return; }
+  const snap = runSnapshot();
+  try{
+    let res;
+    if(currentRunId){
+      res = await supa.from('inv_runs').update({
+        ref_date: snap.ref_date, rows: snap.rows, listing: snap.listing, notes: snap.notes,
+        file_names: snap.file_names, counts: snap.counts, updated_at: new Date().toISOString()
+      }).eq('id', currentRunId);
+    }else{
+      res = await supa.from('inv_runs').insert({
+        created_by: currentUser.id, operator_name: currentUser.email,
+        ref_date: snap.ref_date, rows: snap.rows, listing: snap.listing, notes: snap.notes,
+        file_names: snap.file_names, counts: snap.counts
+      }).select().single();
+      if(!res.error) currentRunId = res.data.id;
+    }
+    if(res.error) throw res.error;
+    setSyncStatus('tersimpan · ' + new Date().toLocaleTimeString('id-ID'));
+  }catch(e){
+    console.warn('Gagal menyimpan run:', e);
+    setSyncStatus('gagal menyimpan ke server', true);
+    alert('Gagal menyimpan run ke server: ' + (e.message || e));
+  }
+}
+
+async function loadRunHistory(){
+  if(!supaReady || !currentUser) return [];
+  try{
+    const res = await supa.from('inv_runs')
+      .select('id,created_at,updated_at,operator_name,ref_date,counts')
+      .order('updated_at', {ascending:false});
+    if(res.error) throw res.error;
+    return res.data || [];
+  }catch(e){
+    console.warn('Gagal ambil riwayat run:', e);
+    setSyncStatus('gagal mengambil riwayat', true);
+    return [];
+  }
+}
+
+function renderRunHistory(list){
+  const el = document.getElementById('runHistList');
+  if(!list.length){ el.innerHTML = '<div style="color:var(--ink-soft);font-size:12.5px">Belum ada run tersimpan.</div>'; return; }
+  el.innerHTML = list.map(r=>{
+    const c = r.counts || {};
+    const total = Object.values(c).reduce((a,b)=>a+(b||0), 0);
+    const when = r.updated_at ? new Date(r.updated_at).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'}) : '';
+    return '<div class="runrow">' +
+      '<span class="rid">' + String(r.id||'').slice(0,8) + '</span>' +
+      '<span class="rmeta">' + (r.ref_date ? 'Acuan ' + escAttr(r.ref_date) : '(tanpa tanggal acuan)') +
+        '<small>' + escAttr(when) + ' · ' + escAttr(r.operator_name||'') + ' · ' + total + ' PEB</small></span>' +
+      '<button class="btn btn-ghost btn-sm" data-openrun="' + r.id + '">Buka</button>' +
+      '<button class="btn btn-ghost btn-sm" data-delrun="' + r.id + '">Hapus</button>' +
+      '</div>';
+  }).join('');
+  el.querySelectorAll('[data-openrun]').forEach(b=>b.addEventListener('click', ()=>openRun(b.dataset.openrun)));
+  el.querySelectorAll('[data-delrun]').forEach(b=>b.addEventListener('click', ()=>deleteRun(b.dataset.delrun)));
+}
+
+async function openRun(id){
+  if(!confirm('Buka run ini? Tampilan yang belum disimpan akan diganti.')) return;
+  try{
+    const res = await supa.from('inv_runs').select('*').eq('id', id).single();
+    if(res.error) throw res.error;
+    const r = res.data;
+    state.rows = r.rows || [];
+    state.listing = r.listing || [];
+    state.notes = new Map(Object.entries(r.notes || {}));
+    state.refDate = r.ref_date || '';
+    state.filter = new Set();
+    state.shown = 0; state.lshown = 0;
+    currentRunId = r.id;
+    const wrap = document.getElementById('refWrap');
+    const picker = document.getElementById('refDate');
+    if(state.refDate){
+      wrap.classList.remove('hide');
+      const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(state.refDate);
+      picker.value = m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+    }else{ wrap.classList.add('hide'); picker.value=''; }
+    document.getElementById('runDate').textContent = r.updated_at
+      ? new Date(r.updated_at).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'}) : '—';
+    document.getElementById('runRows').textContent = state.rows.length.toLocaleString('id-ID');
+    document.getElementById('resultStep').classList.remove('hide');
+    renderLedger(); renderTable(true); renderListing(true);
+    document.getElementById('runHistPanel').classList.remove('on');
+    document.getElementById('resultStep').scrollIntoView({behavior:'smooth',block:'start'});
+    setSyncStatus('run dibuka · ' + new Date().toLocaleTimeString('id-ID'));
+  }catch(e){
+    console.warn('Gagal membuka run:', e);
+    alert('Gagal membuka run: ' + (e.message || e));
+  }
+}
+
+async function deleteRun(id){
+  if(!confirm('Hapus run ini dari server? Tindakan ini tidak bisa dibatalkan.')) return;
+  try{
+    const res = await supa.from('inv_runs').delete().eq('id', id);
+    if(res.error) throw res.error;
+    if(currentRunId === id) currentRunId = null;
+    renderRunHistory(await loadRunHistory());
+  }catch(e){
+    console.warn('Gagal menghapus run:', e);
+    alert('Gagal menghapus run: ' + (e.message || e));
+  }
+}
+
+function refreshAuthUI(session){
+  const user = session && session.user ? session.user : null;
+  currentUser = user;
+  const emailEl = document.getElementById('acctEmail');
+  if(user){
+    document.body.classList.add('authed');
+    if(emailEl) emailEl.textContent = user.email || '';
+  }else{
+    document.body.classList.remove('authed');
+    if(emailEl) emailEl.textContent = '';
+  }
+}
+
+if(!supaReady){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.getElementById('authErr').textContent = 'Server belum diatur (SUPABASE_URL/SUPABASE_ANON_KEY belum diisi).';
+    document.getElementById('authSubmit').disabled = true;
+  });
+}else{
+  supa.auth.onAuthStateChange((_evt, session)=>refreshAuthUI(session));
+  supa.auth.getSession().then(({data})=>refreshAuthUI(data.session));
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.getElementById('authForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const errEl = document.getElementById('authErr'), btn = document.getElementById('authSubmit');
+      errEl.textContent = ''; btn.disabled = true;
+      const email = document.getElementById('authEmail').value.trim();
+      const pass = document.getElementById('authPass').value;
+      const {error} = await supa.auth.signInWithPassword({email, password: pass});
+      if(error) errEl.textContent = 'Gagal masuk: ' + error.message;
+      btn.disabled = false;
+    });
+    document.getElementById('btnSignOut').addEventListener('click', async ()=>{
+      if(!confirm('Keluar dari akun ini?')) return;
+      await supa.auth.signOut();
+    });
+    document.getElementById('btnSaveRun').addEventListener('click', saveRun);
+    document.getElementById('btnRunHist').addEventListener('click', async ()=>{
+      const panel = document.getElementById('runHistPanel');
+      if(panel.classList.contains('on')){ panel.classList.remove('on'); return; }
+      renderRunHistory(await loadRunHistory());
+      panel.classList.add('on');
+    });
+  });
+}
 
 /* ================= Baca file ================= */
 function readFile(file){
@@ -858,6 +1099,7 @@ function buildListing(){
 }
 
 function run(){
+  currentRunId = null;
   const A = aggregate(state.inv);
   const B = aggregate(state.scm);
   const IN = buildInbound();
@@ -1268,6 +1510,7 @@ document.getElementById('btnClearFilters').onclick = ()=>{
 document.getElementById('btnReset').onclick = ()=>{
   state.inv=[]; state.scm=[]; state.inb=[]; state.out=[]; state.rows=[]; state.filter=new Set(); state.refDate='';
   state.notes=new Map();
+  currentRunId=null;
   state.listing=[]; state.lshown=0;
   state.sortKey=null; state.sortDir='asc';
   Object.keys(state.colFilters).forEach(k=> state.colFilters[k]='');
