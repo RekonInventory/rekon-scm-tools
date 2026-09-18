@@ -60,6 +60,7 @@ th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
 th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 td.actions{white-space:nowrap;display:flex;gap:6px}
 .badge{display:inline-block;background:var(--green-bg);color:var(--green);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px}
+.badge.blocked{background:var(--red-bg);color:var(--red)}
 .notadmin{background:var(--red-bg);color:var(--red);border:1px solid #eec7c7;border-radius:8px;padding:14px 16px;font-size:13px}
 
 .glt-toast-wrap{position:fixed;top:48px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;max-width:360px}
@@ -136,7 +137,7 @@ td.actions{white-space:nowrap;display:flex;gap:6px}
     <div class="panel">
       <h2>Daftar pengguna <button class="btn ghost" id="btnReload" type="button" style="margin-left:8px;padding:3px 10px;font-size:11px;">Segarkan</button></h2>
       <table>
-        <thead><tr><th>Nama Pengguna</th><th>Nama Tampilan</th><th>Admin</th><th>Dibuat</th><th>Login terakhir</th><th>Aksi</th></tr></thead>
+        <thead><tr><th>Nama Pengguna</th><th>Nama Tampilan</th><th>Admin</th><th>Status</th><th>Dibuat</th><th>Login terakhir</th><th>Aksi</th></tr></thead>
         <tbody id="userTbody"></tbody>
       </table>
       <div class="msg" id="listMsg"></div>
@@ -250,12 +251,18 @@ async function loadUsers(){
       "<td>" + esc(u.username) + "</td>" +
       "<td>" + esc(u.display_name) + "</td>" +
       "<td>" + (u.is_admin ? '<span class="badge">ADMIN</span>' : "") + "</td>" +
+      "<td>" + (u.banned ? '<span class="badge blocked">DIBLOKIR</span>' : '<span class="badge">AKTIF</span>') + "</td>" +
       "<td>" + esc(fmtStamp(u.created_at)) + "</td>" +
       "<td>" + esc(fmtStamp(u.last_sign_in_at)) + "</td>" +
       '<td class="actions">' +
         '<button class="btn ghost" data-act="reset" style="padding:5px 9px;font-size:11.5px;">Reset sandi</button>' +
         '<button class="btn ghost" data-act="rename" style="padding:5px 9px;font-size:11.5px;">Ganti nama</button>' +
-        (u.id === currentUser.id ? "" : '<button class="btn danger" data-act="delete" style="padding:5px 9px;font-size:11.5px;">Hapus</button>') +
+        (u.id === currentUser.id ? "" : (
+          (u.banned
+            ? '<button class="btn ghost" data-act="unban" style="padding:5px 9px;font-size:11.5px;">Buka blokir</button>'
+            : '<button class="btn ghost" data-act="ban" style="padding:5px 9px;font-size:11.5px;color:var(--red);">Blokir</button>') +
+          '<button class="btn danger" data-act="delete" style="padding:5px 9px;font-size:11.5px;">Hapus</button>'
+        )) +
       "</td></tr>"
     )).join("");
     msg.textContent = "";
@@ -281,11 +288,19 @@ document.getElementById("userTbody").addEventListener("click", async (e)=>{
     if(name === null) return;
     try{ await callAdmin("setDisplayName", {userId:id, display_name:name}); loadUsers(); }
     catch(err){ gltToast("Gagal: " + err.message, "err"); }
+  }else if(btn.dataset.act === "ban"){
+    const ok = await gltConfirm("Blokir akses " + username + " sekarang?\n\nSesi yang sedang berjalan akan ditolak server, dan pengguna ini tidak bisa login lagi sampai dibuka blokirnya. Data & riwayatnya tidak terpengaruh.", {danger:true, okLabel:"Blokir"});
+    if(!ok) return;
+    try{ await callAdmin("ban", {userId:id}); gltToast("Akses " + username + " diblokir.", "ok"); loadUsers(); }
+    catch(err){ gltToast("Gagal: " + err.message, "err"); }
+  }else if(btn.dataset.act === "unban"){
+    try{ await callAdmin("unban", {userId:id}); gltToast("Blokir " + username + " dibuka.", "ok"); loadUsers(); }
+    catch(err){ gltToast("Gagal: " + err.message, "err"); }
   }else if(btn.dataset.act === "delete"){
-    const ok = await gltConfirm("Hapus pengguna " + username + "? Tindakan ini tidak bisa dibatalkan.\n\nCatatan: kalau pengguna ini pernah membuat run/case, penghapusan bisa gagal karena data tersebut masih menautkan ke akunnya.", {danger:true, okLabel:"Hapus"});
+    const ok = await gltConfirm("Hapus pengguna " + username + "? Tindakan ini tidak bisa dibatalkan.", {danger:true, okLabel:"Hapus"});
     if(!ok) return;
     try{ await callAdmin("delete", {userId:id}); loadUsers(); }
-    catch(err){ gltToast("Gagal: " + err.message, "err"); }
+    catch(err){ gltToast("Gagal: " + err.message, "err", 12000); }
   }
 });
 

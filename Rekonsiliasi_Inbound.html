@@ -290,6 +290,7 @@ body:not(.authed) .topbar, body:not(.authed) .wrap{display:none;}
 .sl-field{display:flex;flex-direction:column;gap:2px;font-size:12px;}
 .sl-field label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint);}
 .sl-field b{font-weight:700;color:var(--ink);}
+.sl-src-link{color:var(--accent);text-decoration:underline;cursor:pointer;}
 .sl-participants{display:flex;flex-wrap:wrap;gap:6px;}
 .sl-dot{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;background:#fff;border:1px solid var(--border);border-radius:99px;padding:2px 8px;}
 .sl-dot i{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;}
@@ -365,10 +366,8 @@ body{padding-top:38px;}
 <div class="topbar">
   <div>
     <h1>Rekonsiliasi Inbound — SCM ↔ IOR / DRR</h1>
-    <div class="flow">Agregasi per NOPEN → QTY (tepat) → CBM (toleransi 0.5) → SO/PO → dua arah → histori lintas periode</div>
   </div>
   <div class="topbar-right">
-    <span class="badge-pill" id="appVersionBadge">—</span>
     <span class="badge-pill acct"><span id="syncStatus"></span>Login: <span id="acctEmail"></span><button type="button" id="btnSignOut">Keluar</button></span>
   </div>
 </div>
@@ -482,7 +481,7 @@ body{padding-top:38px;}
     </div>
   </div>
 
-  <footer class="appfoot">Rekonsiliasi Inbound · file Excel diproses 100% di browser · catatan/case disinkronkan ke server bersama</footer>
+  <footer class="appfoot">Rekonsiliasi Inbound</footer>
 </div>
 
 <!-- MODAL: sesi kolaboratif ditemukan -->
@@ -2155,7 +2154,8 @@ function caseToRow(rec){
     updated_at: rec.updatedAt || new Date().toISOString(),
     updated_by: currentUser ? currentUser.id : null,
     user_name: APP.cases.currentUser(),
-    audit: Array.isArray(rec.audit) ? rec.audit : []
+    audit: Array.isArray(rec.audit) ? rec.audit : [],
+    deleted_at: null // menyimpan case selalu berarti aktif lagi, bersihkan soft-delete sebelumnya kalau ada
   };
 }
 
@@ -2174,7 +2174,9 @@ async function pushCaseToSupabase(rec){
 async function deleteCaseFromSupabase(brand, nopen){
   if (!supaReady || !currentUser) return;
   try{
-    var res = await supa.from("inbound_cases").delete().eq("id", brand + "|" + nopen);
+    // Soft delete: baris & audit-nya TETAP ADA (dipakai sheet "Riwayat Case"
+    // saat ekspor), hanya disembunyikan dari pull/tampilan aktif via deleted_at.
+    var res = await supa.from("inbound_cases").update({deleted_at: new Date().toISOString()}).eq("id", brand + "|" + nopen);
     if (res.error) throw res.error;
   }catch(e){ console.warn("Gagal hapus case di server:", e); }
 }
@@ -2183,7 +2185,7 @@ async function pullCasesFromSupabase(){
   if (!supaReady || !currentUser) return;
   setSyncStatus("menyinkronkan…");
   try{
-    var res = await supa.from("inbound_cases").select("*");
+    var res = await supa.from("inbound_cases").select("*").is("deleted_at", null);
     if (res.error) throw res.error;
     var obj = {};
     (res.data || []).forEach(function(r){
@@ -2330,7 +2332,7 @@ var SessionMgr = (function(){
     var bytes = json.length;
     var row = {
       workspace_id: WORKSPACE_ID, tool_name: SESSION_TOOL, status: "ACTIVE",
-      owner_id: currentUser.id, owner_name: currentUser.email,
+      owner_id: currentUser.id, owner_name: displayNameFromUser(currentUser),
       period_key: (meta && meta.periodKey) || null, source_names: (meta && meta.sourceNames) || null,
       last_activity_at: new Date().toISOString(), updated_at: new Date().toISOString()
     };
@@ -2351,16 +2353,60 @@ var SessionMgr = (function(){
       res = await supa.from("inbound_sessions").update(row).eq("id", current.id).select().single();
     }else{
       row.version = 1;
-      row.audit = [{at:new Date().toISOString(), what:"Sesi dibuat", by:currentUser.email}];
+      row.audit = [{at:new Date().toISOString(), what:"Sesi dibuat", by:displayNameFromUser(currentUser)}];
       res = await supa.from("inbound_sessions").insert(row).select().single();
     }
     if (res.error) throw res.error;
     current = res.data; role = "OWNER"; followMode = "data";
     try{ window.localStorage.setItem(LAST_JOIN_KEY, current.id); }catch(e){}
+
+    // Unggah berkas sumber ASLI (bukan hasil olahan) supaya follower bisa
+    // mengunduh persis file yang dipakai owner, tanpa perlu dikirim manual.
+    if (meta && meta.sourceFiles){
+      try{
+        var uploaded = await uploadSourceFiles(current.id, meta.sourceFiles);
+        if (uploaded){
+          var upd = await supa.from("inbound_sessions").update({source_files: uploaded}).eq("id", current.id).select().single();
+          if (!upd.error) current = upd.data;
+        }
+      }catch(e){ console.warn("Gagal mengunggah berkas sumber:", e); }
+    }
+
     await subscribeRealtime(current.id);
     broadcast("DATA_UPDATED", {sessionId: current.id, version: current.version});
     startHeartbeat();
     return current;
+  }
+
+  async function uploadSourceFiles(sessionId, filesMap){
+    var out = {}, kinds = ["scm","ior","nike"];
+    for (var i=0;i<kinds.length;i++){
+      var k = kinds[i], f = filesMap[k];
+      if (!f) continue;
+      var path = WORKSPACE_ID + "/" + sessionId + "/sources/" + k + "-" + f.name;
+      try{
+        var up = await supa.storage.from(SNAPSHOT_BUCKET).upload(path, f, {upsert:true});
+        if (!up.error) out[k] = {path: path, name: f.name};
+      }catch(e){ console.warn("Gagal unggah berkas sumber " + k + ":", e); }
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
+  async function downloadSourceFile(kind){
+    if (!current || !current.source_files || !current.source_files[kind]){
+      gltToast("Berkas sumber tidak tersedia untuk sesi ini.", "warn");
+      return;
+    }
+    try{
+      var info = current.source_files[kind];
+      var dl = await supa.storage.from(SNAPSHOT_BUCKET).download(info.path);
+      if (dl.error) throw dl.error;
+      var url = URL.createObjectURL(dl.data);
+      var a = document.createElement("a");
+      a.href = url; a.download = info.name || (kind + ".xlsx");
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    }catch(e){ gltToast("Gagal mengunduh berkas: " + ((e&&e.message)||e), "err"); }
   }
 
   async function loadSnapshot(sessionRow){
@@ -2430,11 +2476,11 @@ var SessionMgr = (function(){
      dan mencatat audit trail (dipertahankan, bukan ditimpa). */
   async function takeoverSession(sessionRow){
     if (!supaReady || !currentUser) return null;
-    var auditEntry = {at:new Date().toISOString(), from:sessionRow.owner_name || "", to:currentUser.email,
+    var auditEntry = {at:new Date().toISOString(), from:sessionRow.owner_name || "", to:displayNameFromUser(currentUser),
                        what:"Ambil alih sesi (owner tidak aktif > " + Math.round(SESSION_STALE_MS/60000) + " menit)"};
     var newAudit = (sessionRow.audit || []).concat([auditEntry]).slice(-200);
     var res = await supa.from("inbound_sessions").update({
-      owner_id: currentUser.id, owner_name: currentUser.email,
+      owner_id: currentUser.id, owner_name: displayNameFromUser(currentUser),
       last_activity_at: new Date().toISOString(), audit: newAudit
     }).eq("id", sessionRow.id).select().single();
     if (res.error) throw res.error;
@@ -2457,20 +2503,27 @@ var SessionMgr = (function(){
     });
     await channel.subscribe(async function(status){
       if (status === "SUBSCRIBED"){
-        await channel.track({user_id:currentUser.id, name:currentUser.email, role:role || "FOLLOWER", at:new Date().toISOString()});
+        await channel.track({user_id:currentUser.id, name:displayNameFromUser(currentUser), role:role || "FOLLOWER", at:new Date().toISOString()});
       }
     });
   }
 
   function broadcast(type, data){
     if (!channel) return;
-    channel.send({type:"broadcast", event:"session", payload:Object.assign({type:type, from:currentUser?currentUser.email:""}, data||{})});
+    channel.send({type:"broadcast", event:"session", payload:Object.assign({type:type, from:currentUser?displayNameFromUser(currentUser):""}, data||{})});
   }
   /* Hanya OWNER yang "disiarkan" tampilannya -- follower TIDAK otomatis
      menyeragamkan filter satu sama lain (sesuai ketentuan). */
   function broadcastViewState(viewObj){
     if (role !== "OWNER") return;
     broadcast("VIEW_CHANGED", {view: viewObj});
+    // Simpan juga ke kolom view_state (bukan cuma disiarkan) supaya follower yang
+    // BARU SAJA memilih "Ikuti Tampilan" langsung dapat tampilan owner saat ini,
+    // bukan menunggu perubahan berikutnya.
+    if (current){
+      current.view_state = viewObj;
+      supa.from("inbound_sessions").update({view_state: viewObj}).eq("id", current.id).then(function(){});
+    }
   }
   function broadcastCaseOpened(brand, nopen){
     if (role !== "OWNER") return;
@@ -2486,7 +2539,7 @@ var SessionMgr = (function(){
 
   return {
     getActiveSession: getActiveSession, fetchSession: fetchSession, pullLatest: pullLatest,
-    saveSnapshot: saveSnapshot, loadSnapshot: loadSnapshot,
+    saveSnapshot: saveSnapshot, loadSnapshot: loadSnapshot, downloadSourceFile: downloadSourceFile,
     joinSession: joinSession, reclaimSession: reclaimSession, leaveSession: leaveSession, closeSession: closeSession,
     takeoverSession: takeoverSession, subscribeRealtime: subscribeRealtime,
     broadcast: broadcast, broadcastViewState: broadcastViewState, broadcastCaseOpened: broadcastCaseOpened,
@@ -2689,9 +2742,9 @@ APP.exporter = (function (C, E, CASES) {
       "QTY SCM", "QTY " + cmpLabel, "Selisih QTY", "CEK QTY",
       "CBM SCM", "CBM " + cmpLabel, "Selisih CBM", "CEK CBM",
       "STATUS", "ISSUE", "EXPLANATION",
-      "REMARK", "ACTION STATUS", "DIPERBARUI"];
+      "REMARK", "ACTION STATUS", "PIC TERAKHIR", "DIPERBARUI"];
   }
-  var MAIN_COLS = [10, 14, 20, 26, 26, 20, 20, 20, 20, 11, 10, 10, 11, 10, 11, 11, 11, 10, 11, 22, 50, 40, 14, 18];
+  var MAIN_COLS = [10, 14, 20, 26, 26, 20, 20, 20, 20, 11, 10, 10, 11, 10, 11, 11, 11, 10, 11, 22, 50, 40, 22, 18];
 
   function mainRow(r, brand) {
     var c = CASES.get(brand, r.NOPEN);
@@ -2705,6 +2758,7 @@ APP.exporter = (function (C, E, CASES) {
       r.CBM_SCM, r.CBM_CMP, r.CBM_DIFF, r.CEK_CBM,
       r.ROW_STATUS, r.ISSUE, sc(r.EXPLANATION),
       c ? sc(c.remark) : "", c ? c.status : "",
+      c ? sc(c.pic) : "",
       c ? C.fmtStamp(c.updatedAt) : ""
     ];
   }
@@ -2742,6 +2796,30 @@ APP.exporter = (function (C, E, CASES) {
         q.report.counts.badDate, q.report.counts.blankSo, q.report.counts.blankPo,
         q.report.counts.dupNopenSoPo, sc(q.note || "")
       ]);
+    });
+    return rows;
+  }
+
+  /* ---------------- SHEET: RIWAYAT CASE (histori lengkap, termasuk yang sudah dihapus) ----------------
+     Satu baris per perubahan (bukan per NOPEN), diambil dari kolom audit yang sudah
+     ada di setiap case sejak awal -- "by" di situ selalu nama asli (teks), jadi
+     riwayat tetap terbaca walau akun pembuatnya sudah dihapus dari Supabase Auth. */
+  var CASE_HISTORY_HEAD = ["NOPEN", "Brand", "Dihapus?", "Status Saat Ini", "PIC Saat Ini", "Waktu Perubahan", "Oleh", "Perubahan"];
+  var CASE_HISTORY_COLS = [12, 9, 10, 16, 22, 18, 22, 60];
+  function aoaCaseHistory(caseRows) {
+    var rows = [CASE_HISTORY_HEAD];
+    (caseRows || []).slice().sort(function(a, b) {
+      return String(a.nopen) < String(b.nopen) ? -1 : String(a.nopen) > String(b.nopen) ? 1 : 0;
+    }).forEach(function (c) {
+      var audit = Array.isArray(c.audit) ? c.audit : [];
+      var deleted = c.deleted_at ? "Ya" : "";
+      if (!audit.length) {
+        rows.push([sc(c.nopen), c.brand, deleted, c.status, sc(c.pic), "", "", "(tidak ada riwayat audit)"]);
+        return;
+      }
+      audit.forEach(function (a) {
+        rows.push([sc(c.nopen), c.brand, deleted, c.status, sc(c.pic), C.fmtStamp(a.at), sc(a.by), sc(a.what)]);
+      });
     });
     return rows;
   }
@@ -2877,6 +2955,11 @@ APP.exporter = (function (C, E, CASES) {
 
     XLSX.utils.book_append_sheet(wb, sheetFrom(aoaQuality(state),
       [30, 18, 12, 14, 12, 14, 16, 16, 18, 12, 12, 20, 40]), "Data Quality");
+
+    if (state._caseHistory) {
+      var wsHist = sheetFrom(aoaCaseHistory(state._caseHistory), CASE_HISTORY_COLS);
+      XLSX.utils.book_append_sheet(wb, wsHist, "Riwayat Case");
+    }
 
     return wb;
   }
@@ -3061,10 +3144,10 @@ async function intake(fileList){
         ? 'Tipe "'+f.name+'" tidak dikenali.'
         : 'Belum dapat memastikan tipe "'+f.name+'" (keyakinan '+Math.round((det.confidence||0)*100)+'%).';
       problems.push(why + " Pilih tipenya secara manual di bawah.");
-      stash("unknown_"+Date.now(), {name:f.name, wb:wb, detect:det});
+      stash("unknown_"+Date.now(), {name:f.name, wb:wb, detect:det, file:f});
       continue;
     }
-    await assign(det.kind, f.name, wb, det);
+    await assign(det.kind, f.name, wb, det, f);
   }
 
   busy = false;
@@ -3091,7 +3174,7 @@ function nopenPerMonth(rows){
     .map(function(e){ var p = e[0].split("-"); return {label: C.BULAN_PANJANG[+p[1]-1]+" "+p[0], count:e[1]}; });
 }
 
-async function assign(kind, name, wb, det){
+async function assign(kind, name, wb, det, rawFile){
   setStatus("Memvalidasi " + name + "…");
   await C.yieldUI();
   var slot = SLOTS[kind];
@@ -3099,7 +3182,7 @@ async function assign(kind, name, wb, det){
   var res = await RD.extract(wb, sheet, slot.spec, {}, null);
 
   var entry = {
-    name:name, wb:wb, sheet:sheet, detect:det,
+    name:name, wb:wb, sheet:sheet, detect:det, rawFile:rawFile || null,
     rows:res.rows, report:res.report, fatal:res.fatal,
     severity: RD.severityOf(res.report, res.fatal),
     note: RD.describe(res.fatal, res.report)
@@ -3306,7 +3389,6 @@ async function run(){
       var ori = SCH.resolveOrientation(scmA, iorRows);
       if (ori.swap){
         iorRows = iorRows.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
-        out.warnings.push("Label SO/PO pada berkas IOR terbaca tertukar dan sudah dinormalkan otomatis ("+ori.swapped+" cocok setelah ditukar vs "+ori.asIs+" sebelum ditukar).");
       }
       var iorHist = (files.ior.history||[]).slice();
       out.adidas = E.reconcile(scmA, iorRows, "IOR", E.buildHistory(iorHist.length?iorHist:iorRows));
@@ -3320,7 +3402,6 @@ async function run(){
       var drrRows = scoped.rows;
       if (ori2.swap){
         drrRows = drrRows.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
-        out.warnings.push("Label SO/PO pada berkas DRR terbaca tertukar dan sudah dinormalkan otomatis.");
       }
       out.nike = E.reconcile(scmN, drrRows, "DRR", E.buildHistory(drrAll));
     }
@@ -3341,7 +3422,9 @@ async function run(){
     // rekonsiliasi yang sudah tampil -- tool tetap berfungsi normal standalone.
     if (supaReady && currentUser){
       try{
-        await SessionMgr.saveSnapshot(RESULT, {periodKey: out.periodKey, sourceNames: out.sources});
+        await SessionMgr.saveSnapshot(RESULT, {periodKey: out.periodKey, sourceNames: out.sources, sourceFiles: {
+          scm: files.scm && files.scm.rawFile, ior: files.ior && files.ior.rawFile, nike: files.nike && files.nike.rawFile
+        }});
         renderSessionBanner();
       }catch(sessErr){
         console.warn("Gagal menyimpan sesi bersama:", sessErr);
@@ -3512,6 +3595,7 @@ function renderDashboard(){
       view.filter = cardEl.getAttribute("data-filter"); view.mode="nopen"; view.page = 0;
       renderDashboard();
       renderTable();
+      SessionMgr.broadcastViewState(view);
     });
   });
 
@@ -3745,6 +3829,7 @@ function renderTable(){
       if (a==="first") view.page=0; else if (a==="prev") view.page=Math.max(0,view.page-1);
       else if (a==="next") view.page=Math.min(pgs-1,view.page+1); else view.page=pgs-1;
       renderTable();
+      SessionMgr.broadcastViewState(view);
     });
   });
 }
@@ -3947,9 +4032,20 @@ async function exportXLSX(){
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner" style="border-color:rgba(0,0,0,0.15);border-top-color:#2f6fed;"></span> Menyiapkan...';
   await C.yieldUI();
-  try{ EX.downloadXLSX(RESULT); }
+  try{
+    RESULT._caseHistory = await fetchCaseHistoryForExport();
+    EX.downloadXLSX(RESULT);
+  }
   catch(err){ gltToast("Gagal membuat file export: " + err.message, "err"); }
   btn.disabled = false; btn.innerHTML = orig;
+}
+async function fetchCaseHistoryForExport(){
+  if (!supaReady || !currentUser) return null;
+  try{
+    var res = await supa.from("inbound_cases").select("*");
+    if (res.error) throw res.error;
+    return res.data || null;
+  }catch(e){ console.warn("Gagal mengambil riwayat case untuk ekspor:", e); return null; }
 }
 function backupCases(){
   EX.downloadBlob(CASES.exportJSON(), "Rekonsiliasi_Cases_"+EX.stamp(new Date())+".json", "application/json");
@@ -3981,7 +4077,6 @@ function reset(){
 
 function init(){
   CASES.load();
-  $("#appVersionBadge").textContent = "v" + C.META.version + " · build " + C.META.build;
 
   var drop = $("#dzMain"), picker = $("#fileMain");
   drop.addEventListener("click", function(){ picker.click(); });
@@ -4010,7 +4105,7 @@ function init(){
         });
         var det = {kind:kind, sheet:best, confidence:1};
         busy = true;
-        assign(kind, p.name, p.wb, det).then(function(){ busy=false; renderIntake(); setStatus("Tipe berkas ditetapkan manual."); });
+        assign(kind, p.name, p.wb, det, p.file).then(function(){ busy=false; renderIntake(); setStatus("Tipe berkas ditetapkan manual."); });
       }
       return;
     }
@@ -4090,14 +4185,23 @@ function applyFollowedResult(decoded){
   setStatus(isOwner ? "" : "Mengikuti sesi bersama — data disinkron dari server, tidak perlu upload ulang.");
 }
 
+function sourceLinksHtml(s){
+  var src = s.source_names || {}, files = s.source_files || {};
+  var parts = ["scm","ior","nike"].map(function(k){
+    var name = src[k]; if (!name) return null;
+    return files[k]
+      ? '<a href="#" class="sl-src-link" data-dl-source="' + k + '">' + C.esc(name) + '</a>'
+      : C.esc(name);
+  }).filter(Boolean);
+  return parts.length ? parts.join(", ") : "—";
+}
+
 function renderSessionBanner(){
   var s = SessionMgr.getCurrent();
   var banner = $("#sessionBanner"), warn = $("#sessionOfflineWarn");
   if (!s){ banner.style.display = "none"; banner.innerHTML = ""; warn.style.display = "none"; return; }
   var role = SessionMgr.getRole();
   var stale = SessionMgr.isStale(s);
-  var src = s.source_names || {};
-  var srcList = [src.scm, src.ior, src.nike].filter(Boolean);
 
   var plist = [];
   Object.keys(presenceState || {}).forEach(function(key){
@@ -4125,7 +4229,7 @@ function renderSessionBanner(){
       '<div class="sl-left"><span class="sl-tag">LIVE SESSION</span><span class="sl-title">' + C.esc(s.period_key || "Rekonsiliasi Inbound") + '</span></div>' +
       '<div class="sl-mid">' +
         '<div class="sl-field"><label>Owner</label><b>' + C.esc(s.owner_name || "") + '</b></div>' +
-        '<div class="sl-field"><label>Source</label><b>' + (srcList.length ? C.esc(srcList.join(", ")) : "—") + '</b></div>' +
+        '<div class="sl-field"><label>Source</label><b>' + sourceLinksHtml(s) + '</b></div>' +
         '<div class="sl-field"><label>Participants</label><span class="sl-participants">' + dotsHtml + '</span></div>' +
         '<div class="sl-field"><label>Status</label><b>' + C.esc(s.status) + '</b></div>' +
       '</div>' +
@@ -4143,14 +4247,12 @@ function renderSessionBanner(){
 }
 
 function showSessionFoundModal(s){
-  var src = s.source_names || {};
-  var srcList = [src.scm, src.ior, src.nike].filter(Boolean);
   $("#sessionModalBody").innerHTML =
     '<p style="margin-top:0;">Rekonsiliasi Inbound sedang dikerjakan oleh <strong>' + C.esc(s.owner_name || "") + '</strong>.</p>' +
     '<div class="kv-grid" style="margin-bottom:16px;">' +
       '<div class="k">Owner</div><div class="v">' + C.esc(s.owner_name || "") + '</div>' +
       '<div class="k">Period</div><div class="v">' + C.esc(s.period_key || "—") + '</div>' +
-      '<div class="k">Source files</div><div class="v">' + (srcList.length ? C.esc(srcList.join(", ")) : "—") + '</div>' +
+      '<div class="k">Source files</div><div class="v">' + sourceLinksHtml(s) + '</div>' +
       '<div class="k">Start time</div><div class="v">' + C.esc(C.fmtStamp(s.started_at)) + '</div>' +
       '<div class="k">Session status</div><div class="v">' + C.esc(s.status) + (SessionMgr.isStale(s) ? " (owner tidak aktif)" : "") + '</div>' +
     '</div>' +
@@ -4217,6 +4319,11 @@ function wireSessionUI(){
       renderSessionBanner();
       return;
     }
+    if ((t = e.target.closest("[data-dl-source]"))){
+      e.preventDefault();
+      SessionMgr.downloadSourceFile(t.getAttribute("data-dl-source"));
+      return;
+    }
     if ((t = e.target.closest("#btnSessionTakeover"))){
       var s = SessionMgr.getCurrent();
       if (s && await gltConfirm("Ambil alih sesi ini sebagai owner? Anda akan bisa upload/replace sumber & menjalankan ulang.")){
@@ -4225,8 +4332,19 @@ function wireSessionUI(){
       return;
     }
   });
-  document.addEventListener("change", function(e){
-    if (e.target && e.target.id === "followModeSelect") SessionMgr.setFollowMode(e.target.value);
+  document.addEventListener("change", async function(e){
+    if (e.target && e.target.id === "followModeSelect"){
+      SessionMgr.setFollowMode(e.target.value);
+      if (e.target.value === "view"){
+        try{
+          var fresh = await SessionMgr.pullLatest();
+          if (fresh && fresh.view_state){
+            view = Object.assign({}, view, fresh.view_state);
+            renderResults();
+          }
+        }catch(e2){ console.warn("Gagal menyamakan tampilan owner:", e2); }
+      }
+    }
   });
 
   SessionMgr.on(async function(evt){
