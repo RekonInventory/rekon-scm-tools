@@ -2352,6 +2352,17 @@ var SessionMgr = (function(){
       row.version = (current.version || 1) + 1;
       res = await supa.from("inbound_sessions").update(row).eq("id", current.id).select().single();
     }else{
+      // Hanya boleh ada SATU sesi ACTIVE per workspace+tool. Sebelumnya, kalau
+      // dua user berbeda sama-sama membuat sesi baru (mis. reza lalu yuro),
+      // DUA baris ACTIVE bisa hidup bersamaan -- lalu getActiveSession() (yang
+      // memilih "paling baru aktif") bisa mengembalikan hasil berbeda untuk
+      // orang berbeda tergantung waktu heartbeat siapa yang lebih baru. Itu
+      // sebabnya broadcast/"Ikuti Tampilan" tidak nyambung antar sesama user
+      // non-admin: mereka bisa saja tersambung ke SESI YANG BERBEDA. Menutup
+      // sesi ACTIVE lain sebelum membuat yang baru memastikan hanya ada satu
+      // sesi bersama yang berlaku untuk semua orang, tanpa ambiguitas.
+      await supa.from("inbound_sessions").update({status:"CLOSED"})
+        .eq("workspace_id", WORKSPACE_ID).eq("tool_name", SESSION_TOOL).eq("status", "ACTIVE");
       row.version = 1;
       row.audit = [{at:new Date().toISOString(), what:"Sesi dibuat", by:displayNameFromUser(currentUser)}];
       res = await supa.from("inbound_sessions").insert(row).select().single();
@@ -2363,13 +2374,26 @@ var SessionMgr = (function(){
     // Unggah berkas sumber ASLI (bukan hasil olahan) supaya follower bisa
     // mengunduh persis file yang dipakai owner, tanpa perlu dikirim manual.
     if (meta && meta.sourceFiles){
+      var wanted = Object.keys(meta.sourceFiles).filter(function(k){ return !!meta.sourceFiles[k]; });
       try{
         var uploaded = await uploadSourceFiles(current.id, meta.sourceFiles);
         if (uploaded){
           var upd = await supa.from("inbound_sessions").update({source_files: uploaded}).eq("id", current.id).select().single();
-          if (!upd.error) current = upd.data;
+          if (upd.error){
+            console.error("Gagal menyimpan lokasi berkas sumber ke sesi:", upd.error);
+            gltToast("Berkas sumber terunggah, tapi gagal ditautkan ke sesi: " + upd.error.message, "warn");
+          } else {
+            current = upd.data;
+            var missing = wanted.filter(function(k){ return !uploaded[k]; });
+            if (missing.length) gltToast("Sebagian berkas sumber gagal diunggah (" + missing.join(", ") + ") -- lihat console untuk detail.", "warn");
+          }
+        } else if (wanted.length){
+          gltToast("Berkas sumber gagal diunggah, follower tidak akan bisa mengunduhnya untuk sesi ini.", "warn");
         }
-      }catch(e){ console.warn("Gagal mengunggah berkas sumber:", e); }
+      }catch(e){
+        console.error("Gagal mengunggah berkas sumber:", e);
+        gltToast("Gagal mengunggah berkas sumber: " + ((e&&e.message)||e), "warn");
+      }
     }
 
     await subscribeRealtime(current.id);
@@ -2386,8 +2410,9 @@ var SessionMgr = (function(){
       var path = WORKSPACE_ID + "/" + sessionId + "/sources/" + k + "-" + f.name;
       try{
         var up = await supa.storage.from(SNAPSHOT_BUCKET).upload(path, f, {upsert:true});
-        if (!up.error) out[k] = {path: path, name: f.name};
-      }catch(e){ console.warn("Gagal unggah berkas sumber " + k + ":", e); }
+        if (up.error){ console.error("Gagal unggah berkas sumber " + k + ":", up.error); }
+        else out[k] = {path: path, name: f.name};
+      }catch(e){ console.error("Gagal unggah berkas sumber " + k + ":", e); }
     }
     return Object.keys(out).length ? out : null;
   }
