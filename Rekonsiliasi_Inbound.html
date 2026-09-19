@@ -435,6 +435,7 @@ body{padding-top:38px;}
       <button class="btn btn-ghost btn-small" id="btnBackupCases">💾 Cadangkan Case</button>
       <button class="btn btn-ghost btn-small" id="btnRestoreCases">📂 Pulihkan Case</button>
       <input type="file" id="fileRestoreCases" accept=".json" style="display:none;">
+      <button class="btn btn-ghost btn-small" id="btnResetAllCases" style="color:var(--red);">🗑 Hapus Semua Case</button>
     </div>
 
     <div class="scope-note" id="scopeNote" style="display:none;"></div>
@@ -2852,6 +2853,12 @@ APP.exporter = (function (C, E, CASES) {
   "use strict";
 
   function sc(v) { return C.safeCell(v); }
+  // Duplikat lokal dari displayCaseId() di app-ui-logic (module ini punya closure
+  // sendiri, tidak bisa memakai fungsi yang didefinisikan di script terpisah).
+  function displayCaseId(caseId) {
+    var p = CASES.parseKey(caseId);
+    return p.nopen + "-" + p.seq;
+  }
 
   /* ---------------- SHEET 1: README ---------------- */
   function aoaReadme(state) {
@@ -4066,6 +4073,18 @@ function rowFindingStatuses(r, brand){
   var classes = (r.CLASSES||[]).filter(function(cls){ return cls !== E.CLASS.MATCHED; });
   if (!classes.length) return [];
   var cases = CASES.getAllForNopen(brand, r.NOPEN);
+  if (!cases.length) return classes.map(function(){ return "OPEN"; });
+  // NOPEN dengan cuma 1 case (kasus paling umum, termasuk SEMUA case yang sudah
+  // ada sebelum fitur multi-case ini -- case_type-nya bisa saja "OTHER"/tidak
+  // persis cocok dengan klasifikasi row saat ini) -- case itu mewakili status
+  // SEMUA temuan pada NOPEN ini, apa pun jenisnya, supaya status Closed/In Progress
+  // yang sudah diset tetap terbaca dengan benar tanpa syarat pencocokan jenis.
+  if (cases.length === 1) {
+    var only = cases[0];
+    return classes.map(function(){ return only.status; });
+  }
+  // >1 case pada NOPEN yang sama: cocokkan per case_type supaya tiap finding
+  // punya status independen (inilah gunanya multi-case).
   return classes.map(function(cls){
     var ct = CASES.CLASS_TO_CASE_TYPE[cls] || "OTHER";
     var match = cases.filter(function(c){ return c.caseType === ct; });
@@ -4617,6 +4636,39 @@ function restoreCases(file){
   fr.readAsText(file);
 }
 
+// Hapus SEMUA case (kedua brand, seluruh riwayat aktif) -- dipakai kalau data case
+// perlu direset total (mis. mulai periode baru dari nol). Sengaja butuh ketik ulang
+// teks konfirmasi (bukan cuma Ya/Tidak) karena efeknya luas & lintas-user. Sebelum
+// menghapus, cadangan otomatis diunduh dulu sebagai jaring pengaman -- penghapusan
+// di server tetap soft-delete (deleted_at), jadi masih bisa dipulihkan lewat SQL
+// oleh admin kalau benar-benar diperlukan.
+async function resetAllCases(){
+  var all = CASES.all();
+  var n = Object.keys(all).length;
+  if (!n){ gltToast("Tidak ada case untuk dihapus.", "ok"); return; }
+  var ok = await gltPromptMatch(
+    "Ini akan MENGHAPUS SEMUA " + n + " case (Adidas + Nike) untuk SEMUA pengguna, tidak bisa dibatalkan dari sini. " +
+    "Cadangan otomatis akan diunduh lebih dulu. Ketik HAPUS SEMUA untuk melanjutkan.",
+    "HAPUS SEMUA", {okLabel:"Hapus Semua Case", placeholder:"Ketik HAPUS SEMUA"}
+  );
+  if (!ok) return;
+
+  EX.downloadBlob(CASES.exportJSON(), "Backup_Sebelum_Hapus_Semua_Case_"+EX.stamp(new Date())+".json", "application/json");
+
+  if (supaReady && currentUser){
+    try{
+      var res = await supa.from("inbound_cases").update({deleted_at: new Date().toISOString()}).is("deleted_at", null);
+      if (res.error) throw res.error;
+    }catch(e){
+      console.warn("Gagal menghapus semua case di server:", e);
+      gltToast("Gagal menghapus case di server: " + ((e&&e.message)||e) + " -- case lokal tetap dihapus, tapi mungkin muncul lagi setelah sinkron berikutnya.", "err", 12000);
+    }
+  }
+  CASES.snapshotAndClear();
+  gltToast("Semua case sudah dihapus. Cadangan tersimpan di file unduhan.", "ok");
+  if (RESULT) renderResults();
+}
+
 /* ============================================================
    RESET + INIT
 ============================================================ */
@@ -4699,6 +4751,7 @@ function init(){
   $("#btnBackupCases").addEventListener("click", backupCases);
   $("#btnRestoreCases").addEventListener("click", function(){ $("#fileRestoreCases").click(); });
   $("#fileRestoreCases").addEventListener("change", function(e){ if (e.target.files[0]) restoreCases(e.target.files[0]); e.target.value=""; });
+  $("#btnResetAllCases").addEventListener("click", resetAllCases);
   $("#modalClose").addEventListener("click", closeCase);
   $("#btnClearFilters").addEventListener("click", function(){ view.q=""; $("#fSearch").value=""; view.filter="issues"; view.page=0; view.colFilters={}; renderTable(); SessionMgr.broadcastViewState(view); });
 
