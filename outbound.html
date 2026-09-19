@@ -593,6 +593,7 @@ body{padding-top:38px}
   <div class="acct" id="acctBar">
     <span id="syncStatus"></span>
     <span id="acctEmail"></span>
+    <button type="button" id="btnChangePassword">Ganti Password</button>
     <button type="button" id="btnSignOut">Keluar</button>
   </div>
 </header>
@@ -908,6 +909,49 @@ function gltPromptMatch(message, matchValue, opts){
     document.addEventListener("keydown", onKey);
     document.body.appendChild(overlay);
     setTimeout(() => input.focus(), 30);
+  });
+}
+// Dialog 2-field (password baru + ulangi) utk fitur Ganti Password self-service.
+// Resolve dgn string password baru kalau valid & dikonfirmasi, atau null kalau batal.
+function gltPromptPassword(message, opts){
+  opts = opts || {};
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "glt-confirm-overlay";
+    const box = document.createElement("div"); box.className = "glt-confirm-box";
+    const p = document.createElement("p"); p.textContent = message; box.appendChild(p);
+    const input1 = document.createElement("input");
+    input1.type = "password"; input1.placeholder = opts.placeholder1 || "Password baru (minimal 6 karakter)";
+    input1.autocomplete = "new-password";
+    const input2 = document.createElement("input");
+    input2.type = "password"; input2.placeholder = opts.placeholder2 || "Ulangi password baru";
+    input2.autocomplete = "new-password";
+    input2.style.marginTop = "8px";
+    box.appendChild(input1); box.appendChild(input2);
+    const hint = document.createElement("div");
+    hint.style.cssText = "font-size:11.5px;color:var(--red);margin-top:6px;min-height:14px;";
+    box.appendChild(hint);
+    const actions = document.createElement("div"); actions.className = "glt-confirm-actions";
+    const cancelBtn = document.createElement("button"); cancelBtn.textContent = opts.cancelLabel || "Batal";
+    const okBtn = document.createElement("button"); okBtn.textContent = opts.okLabel || "Ganti Password"; okBtn.className = "primary"; okBtn.disabled = true;
+    actions.appendChild(cancelBtn); actions.appendChild(okBtn); box.appendChild(actions); overlay.appendChild(box);
+    function validate(){
+      const v1 = input1.value, v2 = input2.value;
+      if (!v1 && !v2){ hint.textContent = ""; okBtn.disabled = true; return; }
+      if (v1.length < 6){ hint.textContent = "Password minimal 6 karakter."; okBtn.disabled = true; return; }
+      if (v1 !== v2){ hint.textContent = "Password tidak sama."; okBtn.disabled = true; return; }
+      hint.textContent = ""; okBtn.disabled = false;
+    }
+    function close(val){ overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); }
+    function onKey(e){ if(e.key === "Escape") close(null); }
+    input1.addEventListener("input", validate);
+    input2.addEventListener("input", validate);
+    okBtn.addEventListener("click", () => { if (!okBtn.disabled) close(input1.value); });
+    cancelBtn.addEventListener("click", () => close(null));
+    overlay.addEventListener("click", e => { if(e.target === overlay) close(null); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+    setTimeout(() => input1.focus(), 30);
   });
 }
 const ERR_XL = /^#(N\/A|REF!|VALUE!|NAME\?|DIV\/0!|NULL!|NUM!|SPILL!|CALC!)$/i;
@@ -2021,6 +2065,22 @@ if(!supaReady){
     if(!(await gltConfirm("Keluar dari akun ini?"))) return;
     await supa.auth.signOut();
   });
+  $("#btnChangePassword").addEventListener("click", changeMyPassword);
+}
+
+// Ganti password akun sendiri (self-service). Pakai supabase.auth.updateUser() --
+// beroperasi atas sesi login saat ini saja, tidak butuh service-role key/Edge
+// Function, dan tidak menyentuh role/permission/data/history user lain.
+async function changeMyPassword(){
+  const pw = await gltPromptPassword("Masukkan password baru untuk akun Anda:");
+  if (!pw) return;
+  try{
+    const res = await supa.auth.updateUser({password: pw});
+    if (res.error) throw res.error;
+    gltToast("Password berhasil diganti. Gunakan password baru ini saat login berikutnya.", "ok");
+  }catch(e){
+    gltToast("Gagal mengganti password: " + ((e&&e.message)||e), "err");
+  }
 }
 
 function ringkasRun(r){

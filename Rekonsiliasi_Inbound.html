@@ -245,7 +245,6 @@ table.results tbody tr.tr-issue:hover td{background:#f6d3d3 !important;}
 .status-pill[aria-pressed="true"]{color:#fff;}
 .status-pill[data-s="OPEN"][aria-pressed="true"]{background:var(--purple);border-color:var(--purple);}
 .status-pill[data-s="IN PROGRESS"][aria-pressed="true"]{background:var(--amber);border-color:var(--amber);}
-.status-pill[data-s="RESOLVED"][aria-pressed="true"]{background:var(--green);border-color:var(--green);}
 .status-pill[data-s="CLOSED"][aria-pressed="true"]{background:var(--ink-faint);border-color:var(--ink-faint);}
 .adj-row{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:10px;}
 .adj-row .field{flex:1; min-width:140px;}
@@ -368,7 +367,7 @@ body{padding-top:38px;}
     <h1>Rekonsiliasi Inbound — SCM ↔ IOR / DRR</h1>
   </div>
   <div class="topbar-right">
-    <span class="badge-pill acct"><span id="syncStatus"></span>Login: <span id="acctEmail"></span><button type="button" id="btnSignOut">Keluar</button></span>
+    <span class="badge-pill acct"><span id="syncStatus"></span>Login: <span id="acctEmail"></span><button type="button" id="btnChangePassword">Ganti Password</button><button type="button" id="btnSignOut">Keluar</button></span>
   </div>
 </div>
 
@@ -461,6 +460,7 @@ body{padding-top:38px;}
         <button class="mode-btn" data-mode="detail" aria-selected="false">Detail SO/PO</button>
       </div>
       <div class="chip-group" id="quickFilters" style="margin-bottom:12px;"></div>
+      <div class="chip-group" id="abnormalSubFilter" style="margin-bottom:12px;"></div>
       <div class="filter-export-row">
         <div class="filter-bar" style="margin-bottom:0;flex:1;">
           <input type="text" id="fSearch" placeholder="Cari NOPEN / shipper / keterangan / PIC...">
@@ -633,6 +633,49 @@ function gltPromptMatch(message, matchValue, opts){
     document.addEventListener("keydown", onKey);
     document.body.appendChild(overlay);
     setTimeout(function(){ input.focus(); }, 30);
+  });
+}
+// Dialog 2-field (password baru + ulangi) utk fitur Ganti Password self-service.
+// Resolve dgn string password baru kalau valid & dikonfirmasi, atau null kalau batal.
+function gltPromptPassword(message, opts){
+  opts = opts || {};
+  return new Promise(function(resolve){
+    var overlay = document.createElement("div");
+    overlay.className = "glt-confirm-overlay";
+    var box = document.createElement("div"); box.className = "glt-confirm-box";
+    var p = document.createElement("p"); p.textContent = message; box.appendChild(p);
+    var input1 = document.createElement("input");
+    input1.type = "password"; input1.placeholder = opts.placeholder1 || "Password baru (minimal 6 karakter)";
+    input1.autocomplete = "new-password";
+    var input2 = document.createElement("input");
+    input2.type = "password"; input2.placeholder = opts.placeholder2 || "Ulangi password baru";
+    input2.autocomplete = "new-password";
+    input2.style.marginTop = "8px";
+    box.appendChild(input1); box.appendChild(input2);
+    var hint = document.createElement("div");
+    hint.style.cssText = "font-size:11.5px;color:var(--red);margin-top:6px;min-height:14px;";
+    box.appendChild(hint);
+    var actions = document.createElement("div"); actions.className = "glt-confirm-actions";
+    var cancelBtn = document.createElement("button"); cancelBtn.textContent = opts.cancelLabel || "Batal";
+    var okBtn = document.createElement("button"); okBtn.textContent = opts.okLabel || "Ganti Password"; okBtn.className = "primary"; okBtn.disabled = true;
+    actions.appendChild(cancelBtn); actions.appendChild(okBtn); box.appendChild(actions); overlay.appendChild(box);
+    function validate(){
+      var v1 = input1.value, v2 = input2.value;
+      if (!v1 && !v2){ hint.textContent = ""; okBtn.disabled = true; return; }
+      if (v1.length < 6){ hint.textContent = "Password minimal 6 karakter."; okBtn.disabled = true; return; }
+      if (v1 !== v2){ hint.textContent = "Password tidak sama."; okBtn.disabled = true; return; }
+      hint.textContent = ""; okBtn.disabled = false;
+    }
+    function close(val){ overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); }
+    function onKey(e){ if (e.key === "Escape") close(null); }
+    input1.addEventListener("input", validate);
+    input2.addEventListener("input", validate);
+    okBtn.addEventListener("click", function(){ if (!okBtn.disabled) close(input1.value); });
+    cancelBtn.addEventListener("click", function(){ close(null); });
+    overlay.addEventListener("click", function(e){ if (e.target === overlay) close(null); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+    setTimeout(function(){ input1.focus(); }, 30);
   });
 }
 
@@ -1886,14 +1929,63 @@ APP.cases = (function (C) {
   var LEGACY_KEY = "rekonsiliasi_inbound_catatan_v1";   // versi lama (teks + status)
   var USER_KEY = "rekonsiliasi_inbound_user";
 
-  var STATUS = ["OPEN", "IN PROGRESS", "RESOLVED", "CLOSED"];
-  var STATUS_KIND = { "OPEN": "flag", "IN PROGRESS": "warn", "RESOLVED": "ok", "CLOSED": "muted" };
+  var STATUS = ["OPEN", "IN PROGRESS", "CLOSED"];
+  var STATUS_KIND = { "OPEN": "flag", "IN PROGRESS": "warn", "CLOSED": "muted" };
+
+  // Kategori terstruktur untuk case/finding (case_type). Dipetakan 1:1 dari
+  // konstanta klasifikasi mesin rekonsiliasi (CLASS) supaya konsisten dan
+  // supaya setiap finding bisa dihitung/difilter terpisah walau NOPEN-nya sama.
+  var CASE_TYPE = ["ONLY_IN_SCM", "ONLY_IN_IOR", "ONLY_IN_DRR", "QTY_DIFFERENCE", "CBM_DIFFERENCE",
+    "SO_MISMATCH", "PO_MISMATCH", "SO_PO_MISMATCH", "HISTORICAL_MATCH", "INVALID_DATA", "OTHER"];
+  var CASE_TYPE_LABEL = {
+    ONLY_IN_SCM: "Hanya di SCM", ONLY_IN_IOR: "Hanya di IOR", ONLY_IN_DRR: "Hanya di DRR",
+    QTY_DIFFERENCE: "Selisih Qty", CBM_DIFFERENCE: "Selisih CBM",
+    SO_MISMATCH: "SO Beda", PO_MISMATCH: "PO Beda", SO_PO_MISMATCH: "SO/PO Beda",
+    HISTORICAL_MATCH: "Historical Match", INVALID_DATA: "Data Tidak Valid", OTHER: "Lainnya"
+  };
+  // Peta dari CLASS mesin rekonsiliasi -> case_type (untuk saran otomatis saat bikin case baru).
+  var CLASS_TO_CASE_TYPE = {
+    ONLY_IN_SCM: "ONLY_IN_SCM", ONLY_IN_IOR: "ONLY_IN_IOR", ONLY_IN_DRR: "ONLY_IN_DRR",
+    QTY_MISMATCH: "QTY_DIFFERENCE", CBM_MISMATCH: "CBM_DIFFERENCE",
+    SO_MISMATCH: "SO_MISMATCH", PO_MISMATCH: "PO_MISMATCH", SO_PO_MISMATCH: "SO_PO_MISMATCH",
+    HISTORICAL_MATCH: "HISTORICAL_MATCH", INVALID_DATA: "INVALID_DATA"
+  };
 
   var store = Object.create(null);
   var user = "";
   var lastError = null;
 
-  function id(brand, nopen) { return brand + "|" + nopen; }
+  // Key case sekarang "<brand>|<nopen>|<seq2digit>" supaya 1 NOPEN bisa punya
+  // banyak case. Case lama (key lama "<brand>|<nopen>" tanpa seq) TETAP terbaca
+  // apa adanya -- dianggap seq "01" secara implisit, tidak pernah dimigrasi
+  // paksa supaya id lama (dipakai di riwayat/export) tidak berubah.
+  function pad2(n) { n = String(n); return n.length < 2 ? "0" + n : n; }
+  function makeKey(brand, nopen, seq) { return brand + "|" + nopen + "|" + pad2(seq); }
+  function nopenPrefix(brand, nopen) { return brand + "|" + nopen + "|"; }
+  function parseKey(key) {
+    var parts = String(key).split("|");
+    return { brand: parts[0] || "", nopen: parts[1] || "", seq: parts[2] || "01" };
+  }
+  // Seq tertinggi yang sudah dipakai untuk NOPEN ini di penyimpanan lokal saat ini
+  // (termasuk key lama tanpa seq, dihitung sebagai seq 1). Dipakai sbg tebakan awal
+  // saat bikin case baru -- collision (jarang, hanya kalau 2 user bikin case baru
+  // di NOPEN yg sama nyaris bersamaan) ditangani lewat retry di pushCaseToSupabase.
+  function maxSeqInStore(brand, nopen) {
+    var pre = nopenPrefix(brand, nopen), exact = brand + "|" + nopen, max = 0;
+    Object.keys(store).forEach(function (k) {
+      if (k === exact) { max = Math.max(max, 1); return; }
+      if (k.indexOf(pre) === 0) {
+        var s = parseInt(parseKey(k).seq, 10);
+        if (isFinite(s)) max = Math.max(max, s);
+      }
+    });
+    return max;
+  }
+  function nextCaseId(brand, nopen) { return makeKey(brand, nopen, maxSeqInStore(brand, nopen) + 1); }
+  function bumpCaseId(caseId) {
+    var p = parseKey(caseId);
+    return makeKey(p.brand, p.nopen, (parseInt(p.seq, 10) || 1) + 1);
+  }
 
   function currentUser() { return user || "Pengguna"; }
   function setUser(v) {
@@ -1918,10 +2010,10 @@ APP.cases = (function (C) {
         var v = old[k];
         if (!v || typeof v.t !== "string") return;
         var parts = k.split("|");
-        var st = v.s === "selesai" ? "RESOLVED" : (v.s === "proses" ? "IN PROGRESS" : "OPEN");
+        var st = v.s === "selesai" ? "CLOSED" : (v.s === "proses" ? "IN PROGRESS" : "OPEN");
         store[k] = {
           id: k, brand: parts[0] || "", nopen: parts[1] || "",
-          issueType: "", severity: "", pic: "", status: st,
+          caseType: "OTHER", issueType: "", severity: "", pic: "", status: st,
           remark: v.t, createdAt: v.u || new Date().toISOString(),
           updatedAt: v.u || new Date().toISOString(),
           audit: [{ at: v.u || new Date().toISOString(), by: "migrasi", what: "Dipindahkan dari catatan versi lama" }]
@@ -1947,7 +2039,7 @@ APP.cases = (function (C) {
   }
 
   function sanitize(rec, key) {
-    var parts = String(key).split("|");
+    var parts = parseKey(key);
     var now = new Date().toISOString();
     var st = STATUS.indexOf(rec.status) !== -1 ? rec.status : "OPEN";
     var audit = Array.isArray(rec.audit) ? rec.audit.slice(0, 200).map(function (a) {
@@ -1958,10 +2050,13 @@ APP.cases = (function (C) {
       };
     }) : [];
     var numOr0 = function(v){ var n = typeof v === "number" ? v : parseFloat(v); return isFinite(n) ? n : 0; };
+    var numOrNull = function(v){ if (v===null||v===undefined||v==="") return null; var n = typeof v === "number" ? v : parseFloat(v); return isFinite(n) ? n : null; };
+    var ct = CASE_TYPE.indexOf(rec.caseType) !== -1 ? rec.caseType : "OTHER";
     return {
       id: key,
-      brand: C.S(rec.brand) || parts[0] || "",
-      nopen: C.S(rec.nopen) || parts[1] || "",
+      brand: C.S(rec.brand) || parts.brand || "",
+      nopen: C.S(rec.nopen) || parts.nopen || "",
+      caseType: ct,
       issueType: C.S(rec.issueType).slice(0, 40),
       severity: C.S(rec.severity).slice(0, 20),
       pic: C.S(rec.pic).slice(0, 60),
@@ -1972,8 +2067,13 @@ APP.cases = (function (C) {
       cbmAdj: numOr0(rec.cbmAdj),
       qtyAdjNote: C.S(rec.qtyAdjNote).slice(0, 300),
       cbmAdjNote: C.S(rec.cbmAdjNote).slice(0, 300),
+      qtyExpected: numOrNull(rec.qtyExpected),
+      qtyActual: numOrNull(rec.qtyActual),
+      qtyDifference: numOrNull(rec.qtyDifference),
       createdAt: C.S(rec.createdAt) || now,
       updatedAt: C.S(rec.updatedAt) || now,
+      closedAt: rec.closedAt ? C.S(rec.closedAt) : null,
+      closedBy: C.S(rec.closedBy).slice(0, 60),
       audit: audit
     };
   }
@@ -1984,7 +2084,27 @@ APP.cases = (function (C) {
     return res;
   }
 
-  function get(brand, nopen) { return store[id(brand, nopen)] || null; }
+  function get(caseId) { return store[caseId] || null; }
+  // Semua case untuk 1 NOPEN (biasanya 1, bisa lebih), diurutkan dari yang paling lama dibuat.
+  function getAllForNopen(brand, nopen) {
+    var pre = nopenPrefix(brand, nopen), exact = brand + "|" + nopen, out = [];
+    Object.keys(store).forEach(function (k) {
+      if (k === exact || k.indexOf(pre) === 0) out.push(store[k]);
+    });
+    out.sort(function (a, b) { return (a.createdAt || "") < (b.createdAt || "") ? -1 : 1; });
+    return out;
+  }
+  // Case "wakil" utk tampilan ringkas lama (1 chip/kolom) -- dipakai di tempat yang
+  // secara sengaja masih menampilkan 1 case saja (kolom filter, pencarian, dsb).
+  // Prioritas: case yang belum Closed (paling baru diperbarui), lalu case Closed
+  // paling baru kalau semuanya sudah Closed.
+  function primaryCase(brand, nopen) {
+    var all = getAllForNopen(brand, nopen);
+    if (!all.length) return null;
+    var open = all.filter(function (c) { return c.status !== "CLOSED"; });
+    var pool = open.length ? open : all;
+    return pool.slice().sort(function (a, b) { return (b.updatedAt || "") < (a.updatedAt || "") ? -1 : 1; })[0];
+  }
   function all() { return store; }
   function countFor(brand) {
     var pre = brand + "|", n = 0;
@@ -1994,22 +2114,27 @@ APP.cases = (function (C) {
   function openCountFor(brand) {
     var pre = brand + "|", n = 0;
     Object.keys(store).forEach(function (k) {
-      if (k.indexOf(pre) === 0 && store[k].status !== "CLOSED" && store[k].status !== "RESOLVED") n++;
+      if (k.indexOf(pre) === 0 && store[k].status !== "CLOSED") n++;
     });
     return n;
   }
 
-  function save(brand, nopen, fields, context) {
-    var key = id(brand, nopen);
+  // caseId WAJIB sudah ditentukan oleh pemanggil (lihat nextCaseId/createCase di
+  // lapisan sinkronisasi) -- save() sendiri tidak pernah menghasilkan id baru,
+  // supaya id final selalu tetap walau pushCaseToSupabase() perlu retry id lain.
+  function save(caseId, brand, nopen, fields, context) {
+    var key = caseId;
     var now = new Date().toISOString();
     var prev = store[key];
     var rec = prev ? JSON.parse(JSON.stringify(prev)) : {
       id: key, brand: brand, nopen: nopen,
+      caseType: (context && context.caseType) || "OTHER",
       issueType: (context && context.issueType) || "",
       severity: (context && context.severity) || "",
       pic: "", status: "OPEN", remark: "", actionTaken: "",
       qtyAdj: 0, cbmAdj: 0, qtyAdjNote: "", cbmAdjNote: "",
-      createdAt: now, updatedAt: now, audit: []
+      qtyExpected: null, qtyActual: null, qtyDifference: null,
+      createdAt: now, updatedAt: now, closedAt: null, closedBy: "", audit: []
     };
 
     var changes = [];
@@ -2020,6 +2145,8 @@ APP.cases = (function (C) {
     if (fields.status !== undefined && STATUS.indexOf(fields.status) !== -1 && fields.status !== rec.status) {
       changes.push("Status " + rec.status + " → " + fields.status);
       rec.status = fields.status;
+      if (fields.status === "CLOSED") { rec.closedAt = now; rec.closedBy = currentUser(); }
+      else { rec.closedAt = null; rec.closedBy = ""; }
     }
     if (fields.pic !== undefined && C.S(fields.pic) !== rec.pic) {
       changes.push(rec.pic ? ("PIC " + (rec.pic || "-") + " → " + (C.S(fields.pic) || "-")) : ("PIC ditetapkan: " + C.S(fields.pic)));
@@ -2049,14 +2176,19 @@ APP.cases = (function (C) {
     if (fields.cbmAdjNote !== undefined && C.S(fields.cbmAdjNote) !== rec.cbmAdjNote) {
       rec.cbmAdjNote = C.S(fields.cbmAdjNote).slice(0, 300);
     }
+    if (fields.qtyExpected !== undefined) rec.qtyExpected = (fields.qtyExpected===null||fields.qtyExpected==="") ? null : (parseFloat(fields.qtyExpected));
+    if (fields.qtyActual !== undefined) rec.qtyActual = (fields.qtyActual===null||fields.qtyActual==="") ? null : (parseFloat(fields.qtyActual));
+    if (fields.qtyDifference !== undefined) rec.qtyDifference = (fields.qtyDifference===null||fields.qtyDifference==="") ? null : (parseFloat(fields.qtyDifference));
     if (context) {
+      if (context.caseType) rec.caseType = context.caseType;
       if (context.issueType) rec.issueType = context.issueType;
       if (context.severity) rec.severity = context.severity;
     }
 
-    // Tidak ada isi sama sekali -> hapus case supaya tidak menumpuk sampah.
-    if (!rec.remark && rec.status === "OPEN" && !rec.pic && !rec.actionTaken && !rec.qtyAdj && !rec.cbmAdj) {
-      if (prev) { delete store[key]; persist(); return { removed: true }; }
+    // Tidak ada isi sama sekali -> jangan buat case baru (bukan case existing yg
+    // sengaja mau dikosongkan). Case existing yg dikosongkan tetap tersimpan (user
+    // pakai tombol Hapus Case eksplisit kalau memang mau menghapus).
+    if (!prev && !rec.remark && rec.status === "OPEN" && !rec.pic && !rec.actionTaken && !rec.qtyAdj && !rec.cbmAdj) {
       return { removed: true };
     }
 
@@ -2066,13 +2198,37 @@ APP.cases = (function (C) {
     if (rec.audit.length > 200) rec.audit = rec.audit.slice(-200);
     store[key] = sanitize(rec, key);
     var res = persist();
-    return { rec: store[key], persisted: res.ok, reason: res.reason };
+    return { rec: store[key], persisted: res.ok, reason: res.reason, isNew: !prev };
   }
 
-  function remove(brand, nopen) {
-    var key = id(brand, nopen);
-    if (store[key]) { delete store[key]; persist(); return true; }
+  // Tambah 1 entri audit tanpa mengubah field lain -- dipakai evaluasi ulang Qty
+  // otomatis (by="sistem") supaya penjelasannya tercatat persis seperti yang
+  // diminta (bukan cuma pesan generik "Status X -> Y" dari save()).
+  function appendAudit(caseId, by, what) {
+    var rec = store[caseId];
+    if (!rec) return false;
+    rec.audit.push({ at: new Date().toISOString(), by: C.S(by).slice(0, 60), what: C.S(what).slice(0, 300) });
+    if (rec.audit.length > 200) rec.audit = rec.audit.slice(-200);
+    rec.updatedAt = new Date().toISOString();
+    store[caseId] = sanitize(rec, caseId);
+    persist();
+    return true;
+  }
+
+  function remove(caseId) {
+    if (store[caseId]) { delete store[caseId]; persist(); return true; }
     return false;
+  }
+  // Ganti key sebuah case yg sudah ada di store lokal (dipakai saat pushCaseToSupabase
+  // harus retry dgn id lain karena id awal ternyata sudah dipakai case lain di server).
+  function rekey(oldKey, newKey) {
+    if (!store[oldKey] || store[newKey]) return null;
+    var rec = store[oldKey];
+    delete store[oldKey];
+    rec.id = newKey;
+    store[newKey] = sanitize(rec, newKey);
+    persist();
+    return store[newKey];
   }
 
   function exportJSON() {
@@ -2120,7 +2276,10 @@ APP.cases = (function (C) {
 
   return {
     STATUS: STATUS, STATUS_KIND: STATUS_KIND,
-    load: load, get: get, all: all, save: save, remove: remove,
+    CASE_TYPE: CASE_TYPE, CASE_TYPE_LABEL: CASE_TYPE_LABEL, CLASS_TO_CASE_TYPE: CLASS_TO_CASE_TYPE,
+    load: load, get: get, getAllForNopen: getAllForNopen, primaryCase: primaryCase,
+    all: all, save: save, remove: remove, rekey: rekey,
+    nextCaseId: nextCaseId, bumpCaseId: bumpCaseId, parseKey: parseKey, appendAudit: appendAudit,
     countFor: countFor, openCountFor: openCountFor,
     exportJSON: exportJSON, importJSON: importJSON,
     currentUser: currentUser, setUser: setUser, storageProblem: storageProblem,
@@ -2145,13 +2304,18 @@ function setSyncStatus(text, isErr){
 
 function caseToRow(rec){
   return {
-    id: rec.id, brand: rec.brand, nopen: rec.nopen, issue_type: rec.issueType || "",
+    id: rec.id, brand: rec.brand, nopen: rec.nopen, case_type: rec.caseType || "OTHER",
+    issue_type: rec.issueType || "",
     severity: rec.severity || "", pic: rec.pic || "", status: rec.status || "OPEN",
     remark: rec.remark || "", action_taken: rec.actionTaken || "",
     qty_adj: Number(rec.qtyAdj) || 0, cbm_adj: Number(rec.cbmAdj) || 0,
     qty_adj_note: rec.qtyAdjNote || "", cbm_adj_note: rec.cbmAdjNote || "",
+    qty_expected: (rec.qtyExpected===null||rec.qtyExpected===undefined) ? null : Number(rec.qtyExpected),
+    qty_actual: (rec.qtyActual===null||rec.qtyActual===undefined) ? null : Number(rec.qtyActual),
+    qty_difference: (rec.qtyDifference===null||rec.qtyDifference===undefined) ? null : Number(rec.qtyDifference),
     created_at: rec.createdAt || new Date().toISOString(),
     updated_at: rec.updatedAt || new Date().toISOString(),
+    closed_at: rec.closedAt || null, closed_by: rec.closedBy || "",
     updated_by: currentUser ? currentUser.id : null,
     user_name: APP.cases.currentUser(),
     audit: Array.isArray(rec.audit) ? rec.audit : [],
@@ -2159,24 +2323,48 @@ function caseToRow(rec){
   };
 }
 
-async function pushCaseToSupabase(rec){
+// Case yang SUDAH ADA (edit biasa) tetap pakai upsert (aman, id-nya sudah pasti milik
+// case ini). Case BARU (isNew) pakai insert murni supaya kalau id-nya ternyata sudah
+// kepakai case lain (2 user bikin case baru di NOPEN yg sama nyaris bersamaan), server
+// menolak (unique violation) alih-alih diam-diam menimpa case orang lain -- lalu di sini
+// kita coba lagi dengan id berikutnya (dinaikkan) sampai berhasil.
+async function pushCaseToSupabase(rec, isNew){
   if (!supaReady || !currentUser || !rec) return;
   try{
-    var res = await supa.from("inbound_cases").upsert(caseToRow(rec));
-    if (res.error) throw res.error;
+    if (!isNew){
+      var up = await supa.from("inbound_cases").upsert(caseToRow(rec));
+      if (up.error) throw up.error;
+      setSyncStatus("tersinkron");
+      return;
+    }
+    var attempts = 0, current = rec, ok = false;
+    while (attempts < 5 && !ok){
+      attempts++;
+      var ins = await supa.from("inbound_cases").insert(caseToRow(current));
+      if (!ins.error){ ok = true; break; }
+      var isConflict = ins.error.code === "23505" || /duplicate key/i.test(ins.error.message||"");
+      if (!isConflict) throw ins.error;
+      var newId = APP.cases.bumpCaseId(current.id);
+      var rekeyed = APP.cases.rekey(current.id, newId);
+      if (!rekeyed) break; // tidak bisa rekey (jarang) -- hentikan retry, biarkan gagal & tersurfacekan
+      if (editing && editing.caseId === current.id) editing.caseId = newId;
+      current = rekeyed;
+    }
+    if (!ok) throw new Error("Gagal membuat case baru setelah beberapa kali percobaan (id bentrok).");
     setSyncStatus("tersinkron");
+    if (window.__rekonInboundRefresh) window.__rekonInboundRefresh();
   }catch(e){
     console.warn("Gagal sinkron case ke server:", e);
     setSyncStatus("gagal sinkron ke server", true);
   }
 }
 
-async function deleteCaseFromSupabase(brand, nopen){
+async function deleteCaseFromSupabase(caseId){
   if (!supaReady || !currentUser) return;
   try{
     // Soft delete: baris & audit-nya TETAP ADA (dipakai sheet "Riwayat Case"
     // saat ekspor), hanya disembunyikan dari pull/tampilan aktif via deleted_at.
-    var res = await supa.from("inbound_cases").update({deleted_at: new Date().toISOString()}).eq("id", brand + "|" + nopen);
+    var res = await supa.from("inbound_cases").update({deleted_at: new Date().toISOString()}).eq("id", caseId);
     if (res.error) throw res.error;
   }catch(e){ console.warn("Gagal hapus case di server:", e); }
 }
@@ -2190,10 +2378,11 @@ async function pullCasesFromSupabase(){
     var obj = {};
     (res.data || []).forEach(function(r){
       obj[r.id] = {
-        id: r.id, brand: r.brand, nopen: r.nopen, issueType: r.issue_type, severity: r.severity,
+        id: r.id, brand: r.brand, nopen: r.nopen, caseType: r.case_type, issueType: r.issue_type, severity: r.severity,
         pic: r.pic, status: r.status, remark: r.remark, actionTaken: r.action_taken,
         qtyAdj: r.qty_adj, cbmAdj: r.cbm_adj, qtyAdjNote: r.qty_adj_note, cbmAdjNote: r.cbm_adj_note,
-        createdAt: r.created_at, updatedAt: r.updated_at,
+        qtyExpected: r.qty_expected, qtyActual: r.qty_actual, qtyDifference: r.qty_difference,
+        createdAt: r.created_at, updatedAt: r.updated_at, closedAt: r.closed_at, closedBy: r.closed_by,
         audit: Array.isArray(r.audit) ? r.audit : []
       };
     });
@@ -2232,17 +2421,17 @@ function unsubscribeCasesRealtime(){
 
 (function pasangSinkronCases(){
   var _save = APP.cases.save, _remove = APP.cases.remove;
-  APP.cases.save = function(brand, nopen, fields, context){
-    var res = _save(brand, nopen, fields, context);
+  APP.cases.save = function(caseId, brand, nopen, fields, context){
+    var res = _save(caseId, brand, nopen, fields, context);
     if (res){
-      if (res.removed) deleteCaseFromSupabase(brand, nopen);
-      else if (res.rec) pushCaseToSupabase(res.rec);
+      if (res.removed) { /* case kosong baru: tidak pernah tersimpan, tidak ada yg perlu dihapus di server */ }
+      else if (res.rec) pushCaseToSupabase(res.rec, res.isNew);
     }
     return res;
   };
-  APP.cases.remove = function(brand, nopen){
-    var ok = _remove(brand, nopen);
-    if (ok) deleteCaseFromSupabase(brand, nopen);
+  APP.cases.remove = function(caseId){
+    var ok = _remove(caseId);
+    if (ok) deleteCaseFromSupabase(caseId);
     return ok;
   };
 })();
@@ -2623,7 +2812,23 @@ if (!supaReady){
       if (!(await gltConfirm("Keluar dari akun ini?"))) return;
       await supa.auth.signOut();
     });
+    document.getElementById("btnChangePassword").addEventListener("click", changeMyPassword);
   });
+}
+
+// Ganti password akun sendiri (self-service). Pakai supabase.auth.updateUser() --
+// beroperasi atas sesi login saat ini saja, tidak butuh service-role key/Edge
+// Function, dan tidak menyentuh role/permission/data/history user lain.
+async function changeMyPassword(){
+  var pw = await gltPromptPassword("Masukkan password baru untuk akun Anda:");
+  if (!pw) return;
+  try{
+    var res = await supa.auth.updateUser({password: pw});
+    if (res.error) throw res.error;
+    gltToast("Password berhasil diganti. Gunakan password baru ini saat login berikutnya.", "ok");
+  }catch(e){
+    gltToast("Gagal mengganti password: " + ((e&&e.message)||e), "err");
+  }
 }
 
 /* ============================================================
@@ -2767,12 +2972,18 @@ APP.exporter = (function (C, E, CASES) {
       "QTY SCM", "QTY " + cmpLabel, "Selisih QTY", "CEK QTY",
       "CBM SCM", "CBM " + cmpLabel, "Selisih CBM", "CEK CBM",
       "STATUS", "ISSUE", "EXPLANATION",
-      "REMARK", "ACTION STATUS", "PIC TERAKHIR", "DIPERBARUI"];
+      "JUMLAH CASE", "RINGKASAN STATUS CASE"];
   }
-  var MAIN_COLS = [10, 14, 20, 26, 26, 20, 20, 20, 20, 11, 10, 10, 11, 10, 11, 11, 11, 10, 11, 22, 50, 40, 22, 18];
+  var MAIN_COLS = [10, 14, 20, 26, 26, 20, 20, 20, 20, 11, 10, 10, 11, 10, 11, 11, 11, 10, 11, 22, 50, 12, 50];
 
+  // 1 NOPEN bisa punya beberapa case (lihat sheet "Case per Finding" untuk rincian
+  // 1 baris/case) -- sheet ini tetap 1 baris/NOPEN (grain rekonsiliasi mentah),
+  // jadi kolom case di sini cuma ringkasan jumlah & sebaran status.
   function mainRow(r, brand) {
-    var c = CASES.get(brand, r.NOPEN);
+    var cs = CASES.getAllForNopen(brand, r.NOPEN);
+    var counts = {};
+    cs.forEach(function(c){ counts[c.status] = (counts[c.status]||0)+1; });
+    var summary = CASES.STATUS.map(function(s){ return counts[s] ? (counts[s]+" "+s) : null; }).filter(Boolean).join(", ");
     return [
       sc(r.NOPEN),
       r.TGL_SCM ? C.fmtDate(r.TGL_SCM) : "",
@@ -2782,9 +2993,7 @@ APP.exporter = (function (C, E, CASES) {
       r.QTY_SCM, r.QTY_CMP, r.QTY_DIFF, r.CEK_QTY,
       r.CBM_SCM, r.CBM_CMP, r.CBM_DIFF, r.CEK_CBM,
       r.ROW_STATUS, r.ISSUE, sc(r.EXPLANATION),
-      c ? sc(c.remark) : "", c ? c.status : "",
-      c ? sc(c.pic) : "",
-      c ? C.fmtStamp(c.updatedAt) : ""
+      cs.length, sc(summary)
     ];
   }
   function aoaMain(pack, brand) {
@@ -2825,12 +3034,38 @@ APP.exporter = (function (C, E, CASES) {
     return rows;
   }
 
+  /* ---------------- SHEET BARU: CASE PER FINDING (1 baris/case, bukan 1 baris/NOPEN) ----------------
+     Memenuhi kebutuhan "1 NOPEN dengan beberapa finding harus menghasilkan beberapa
+     baris case saat export" -- sheet "Cek Adidas/Cek Nike" di atas tetap 1 baris/NOPEN
+     (grain rekonsiliasi mentah), sheet inilah yang jadi rincian per-case-nya. */
+  var CASE_SHEET_HEAD = ["NOPEN", "Case ID", "Case Type", "Status", "Severity", "PIC",
+    "Qty Expected", "Qty Actual", "Selisih Qty", "Remark", "Dibuat", "Diperbarui", "Closed At", "Closed By"];
+  var CASE_SHEET_COLS = [12, 14, 16, 12, 10, 20, 12, 12, 12, 50, 18, 18, 18, 20];
+  function aoaCaseSheet(brand) {
+    var rows = [CASE_SHEET_HEAD];
+    var all = CASES.all();
+    Object.keys(all).map(function(k){ return all[k]; })
+      .filter(function(c){ return c.brand === brand; })
+      .sort(function(a, b) { return String(a.nopen) < String(b.nopen) ? -1 : String(a.nopen) > String(b.nopen) ? 1 : (a.id<b.id?-1:1); })
+      .forEach(function (c) {
+        rows.push([
+          sc(c.nopen), displayCaseId(c.id), CASES.CASE_TYPE_LABEL[c.caseType]||c.caseType, c.status, sc(c.severity), sc(c.pic),
+          c.qtyExpected===null||c.qtyExpected===undefined?"":c.qtyExpected,
+          c.qtyActual===null||c.qtyActual===undefined?"":c.qtyActual,
+          c.qtyDifference===null||c.qtyDifference===undefined?"":c.qtyDifference,
+          sc(c.remark), C.fmtStamp(c.createdAt), C.fmtStamp(c.updatedAt),
+          c.closedAt?C.fmtStamp(c.closedAt):"", sc(c.closedBy||"")
+        ]);
+      });
+    return rows;
+  }
+
   /* ---------------- SHEET: RIWAYAT CASE (histori lengkap, termasuk yang sudah dihapus) ----------------
      Satu baris per perubahan (bukan per NOPEN), diambil dari kolom audit yang sudah
      ada di setiap case sejak awal -- "by" di situ selalu nama asli (teks), jadi
      riwayat tetap terbaca walau akun pembuatnya sudah dihapus dari Supabase Auth. */
-  var CASE_HISTORY_HEAD = ["NOPEN", "Brand", "Dihapus?", "Status Saat Ini", "PIC Saat Ini", "Waktu Perubahan", "Oleh", "Perubahan"];
-  var CASE_HISTORY_COLS = [12, 9, 10, 16, 22, 18, 22, 60];
+  var CASE_HISTORY_HEAD = ["NOPEN", "Case ID", "Case Type", "Brand", "Dihapus?", "Status Saat Ini", "PIC Saat Ini", "Waktu Perubahan", "Oleh", "Perubahan"];
+  var CASE_HISTORY_COLS = [12, 14, 16, 9, 10, 16, 22, 18, 22, 60];
   function aoaCaseHistory(caseRows) {
     var rows = [CASE_HISTORY_HEAD];
     (caseRows || []).slice().sort(function(a, b) {
@@ -2838,12 +3073,14 @@ APP.exporter = (function (C, E, CASES) {
     }).forEach(function (c) {
       var audit = Array.isArray(c.audit) ? c.audit : [];
       var deleted = c.deleted_at ? "Ya" : "";
+      var caseTypeLbl = CASES.CASE_TYPE_LABEL[c.case_type] || c.case_type || "";
+      var caseIdDisp = displayCaseId(c.id);
       if (!audit.length) {
-        rows.push([sc(c.nopen), c.brand, deleted, c.status, sc(c.pic), "", "", "(tidak ada riwayat audit)"]);
+        rows.push([sc(c.nopen), caseIdDisp, caseTypeLbl, c.brand, deleted, c.status, sc(c.pic), "", "", "(tidak ada riwayat audit)"]);
         return;
       }
       audit.forEach(function (a) {
-        rows.push([sc(c.nopen), c.brand, deleted, c.status, sc(c.pic), C.fmtStamp(a.at), sc(a.by), sc(a.what)]);
+        rows.push([sc(c.nopen), caseIdDisp, caseTypeLbl, c.brand, deleted, c.status, sc(c.pic), C.fmtStamp(a.at), sc(a.by), sc(a.what)]);
       });
     });
     return rows;
@@ -2970,6 +3207,13 @@ APP.exporter = (function (C, E, CASES) {
       var wsN = sheetFromResume(builtN, MAIN_COLS);
       XLSX.utils.book_append_sheet(wb, wsN, "Cek Nike");
     }
+
+    var caseSheetRows = [CASE_SHEET_HEAD];
+    if (state.adidas) caseSheetRows = caseSheetRows.concat(aoaCaseSheet("ADIDAS").slice(1));
+    if (state.nike) caseSheetRows = caseSheetRows.concat(aoaCaseSheet("NIKE").slice(1));
+    var wsCase = sheetFrom(caseSheetRows, CASE_SHEET_COLS);
+    if (caseSheetRows.length > 1) applyAutofilter(wsCase, 0);
+    XLSX.utils.book_append_sheet(wb, wsCase, "Case per Finding");
 
     var det = [DETAIL_HEAD];
     if (state.adidas) det = det.concat(aoaDetail(state.adidas, "ADIDAS").slice(1));
@@ -3103,7 +3347,11 @@ var pending = {};
 var RESULT = null;
 var busy = false;
 var PAGE_SIZE = 100;
-var view = { brand: "ADIDAS", mode: "nopen", filter: "issues", q: "", page: 0, colFilters: {} };
+// abnormalStatus = sub-filter status (Open/In Progress/Closed) khusus saat filter "Abnormal"
+// aktif. Default Open+In Progress tercentang = "Active Abnormal"; Closed sengaja tidak
+// tercentang di awal (histori, bukan abnormal aktif) tapi tetap bisa dipilih user.
+var view = { brand: "ADIDAS", mode: "nopen", filter: "issues", q: "", page: 0, colFilters: {},
+  abnormalStatus: { "OPEN": true, "IN PROGRESS": true, "CLOSED": false } };
 var editing = null;
 var presenceState = {};   // Collaborative Shared Session: state presence terakhir dari Supabase Realtime
 
@@ -3389,6 +3637,51 @@ function archiveCasesIfPeriodChanged(newPeriodKey){
 /* ============================================================
    3. REKONSILIASI (logika identik dengan tool lama)
 ============================================================ */
+// Item 10-15: evaluasi ulang penyesuaian Qty "belum tersedia" terhadap hasil run
+// TERBARU (bukan tiap render -- supaya tidak berulang-ulang membuat case baru).
+// Prinsip: yang dihapus/ditutup adalah PENYESUAIAN LAMA (qtyAdj->0, status->CLOSED,
+// case aslinya tetap ada & tercatat -- bukan dihapus), sedangkan temuan baru (kalau
+// ternyata masih ada selisih setelah data lengkap) dicatat sebagai case terpisah
+// supaya riwayat keduanya tetap runut & tidak tercampur.
+function reevaluateQtyAdjustments(out){
+  ["adidas","nike"].forEach(function(key){
+    var pack = out[key];
+    if (!pack) return;
+    var brand = key === "adidas" ? "ADIDAS" : "NIKE";
+    var rowsByNopen = {};
+    pack.main.forEach(function(r){ rowsByNopen[r.NOPEN] = r; });
+    var all = CASES.all();
+    Object.keys(all).forEach(function(caseId){
+      var c = all[caseId];
+      if (c.brand !== brand || c.status === "CLOSED") return;
+      if (c.qtyExpected === null || c.qtyExpected === undefined) return;
+      var row = rowsByNopen[c.nopen];
+      if (!row) return; // NOPEN tidak muncul di run terbaru (mis. beda periode) -- jangan diutak-atik
+      if (row.CLASSES.indexOf(E.CLASS.ONLY_IN_SCM) !== -1) return; // item 14: masih belum tersedia, pertahankan
+
+      var expected = c.qtyExpected;
+      var actual = row.QTY_CMP || 0;
+      var diff = C.r3(expected - actual);
+      var sesuai = Math.abs(diff) <= (C.QTY_TOL||0);
+
+      CASES.save(caseId, brand, c.nopen, { status: "CLOSED", qtyAdj: 0, qtyActual: actual }, { caseType: c.caseType });
+      CASES.appendAudit(caseId, "sistem", sesuai
+        ? ("Penyesuaian Qty sebelumnya sebesar " + expected + " sudah tersedia pada data terbaru sebesar " + actual + ".")
+        : ("Penyesuaian Qty sebelumnya sebesar " + expected + " telah dihapus karena data terbaru sudah tersedia. Pada data terbaru ditemukan Qty sebesar " + actual + " sehingga masih terdapat selisih Qty sebesar " + Math.abs(diff) + "."));
+      pushCaseToSupabase(CASES.get(caseId), false);
+
+      if (!sesuai){
+        var newId = CASES.nextCaseId(brand, c.nopen);
+        CASES.save(newId, brand, c.nopen, {
+          status: "OPEN", pic: c.pic,
+          remark: "Selisih Qty ditemukan otomatis setelah data terbaru tersedia (lanjutan case " + c.nopen + "-" + CASES.parseKey(caseId).seq + ").",
+          qtyExpected: expected, qtyActual: actual, qtyDifference: diff
+        }, { caseType: "QTY_DIFFERENCE", issueType: row.PRIMARY, severity: row.SEVERITY });
+      }
+    });
+  });
+}
+
 async function run(){
   var g = gate();
   if (!g.ok || busy) return;
@@ -3433,6 +3726,7 @@ async function run(){
 
     out.overall = overallStatus(out);
     out.sources = {scm: files.scm?files.scm.name:"", ior: files.ior?files.ior.name:"", nike: files.nike?files.nike.name:""};
+    reevaluateQtyAdjustments(out);
     RESULT = out;
     view.brand = out.adidas ? "ADIDAS" : "NIKE";
     view.filter = "issues"; view.page = 0; view.q = ""; view.mode = "nopen";
@@ -3529,8 +3823,13 @@ function computeQtyCbmTotals(pack, fixedBrand){
     totalCbmScm += r.CBM_SCM || 0;
     totalCbmCmp += r.CBM_CMP || 0;
     var rb = r._brand || fixedBrand;
-    var c = CASES.get(rb, r.NOPEN);
-    if (c){ totalQtyAdj += c.qtyAdj||0; totalCbmAdj += c.cbmAdj||0; }
+    // Jumlahkan penyesuaian dari SEMUA case NOPEN ini yang masih aktif (bukan Closed) --
+    // case yang sudah di-Closed (termasuk yang di-superseded otomatis oleh evaluasi ulang
+    // Qty) sudah tidak lagi dianggap sebagai penyesuaian berjalan.
+    CASES.getAllForNopen(rb, r.NOPEN).forEach(function(c){
+      if (c.status === "CLOSED") return;
+      totalQtyAdj += c.qtyAdj||0; totalCbmAdj += c.cbmAdj||0;
+    });
   });
   var rawQtyDiff = C.r3(totalQtyScm-totalQtyCmp);
   var rawCbmDiff = C.r3(totalCbmScm-totalCbmCmp);
@@ -3579,6 +3878,20 @@ function renderQtyCbmMonitor(){
   }).join("");
 }
 
+// Hitung jumlah FINDING (bukan row) per status Open/In Progress/Closed, hanya utk
+// row yang diklasifikasikan ABNORMAL oleh mesin rekonsiliasi. 1 row abnormal dengan
+// 2 finding (mis. Only in DRR + Selisih Qty) menyumbang 2 hitungan, bukan 1 -- sesuai
+// prinsip "1 NOPEN bisa lebih dari 1 case" pada dashboard.
+function caseFindingCounts(pack, brand){
+  var out = {"OPEN":0, "IN PROGRESS":0, "CLOSED":0};
+  (pack ? pack.main : []).forEach(function(r){
+    if (r.ROW_STATUS !== "ABNORMAL") return;
+    var rb = r._brand || brand;
+    rowFindingStatuses(r, rb).forEach(function(st){ out[st] = (out[st]||0) + 1; });
+  });
+  return out;
+}
+
 function renderDashboard(){
   var pack = currentPack();
   var s = pack ? E.summarize(pack) : null;
@@ -3591,11 +3904,20 @@ function renderDashboard(){
     return;
   }
   var noteCount = brand === "ALL" ? (CASES.countFor("ADIDAS")+CASES.countFor("NIKE")) : CASES.countFor(brand);
+  // Pemisahan status per-finding (bukan per-row) khusus utk row abnormal, supaya
+  // dashboard bisa membedakan Active Abnormal (Open+In Progress) dari Closed --
+  // Closed tidak lagi dihitung sebagai abnormal aktif walau row-nya tetap abnormal
+  // secara mesin rekonsiliasi.
+  var caseCounts = caseFindingCounts(pack, brand);
 
   var fields = [
     ["Total NOPEN", s.total, "var(--ink)", "all"],
     ["Clear", s.clear, "var(--green)", "clear"],
     ["Abnormal", s.abnormal, s.abnormal?"var(--red)":"var(--ink)", "abnormal"],
+    ["Abnormal Aktif (Open+In Progress)", caseCounts.OPEN+caseCounts["IN PROGRESS"], "var(--red)", "abnormal", "ACTIVE"],
+    ["Abnormal: Open", caseCounts.OPEN, caseCounts.OPEN?"var(--red)":"var(--ink)", "abnormal", "OPEN"],
+    ["Abnormal: In Progress", caseCounts["IN PROGRESS"], caseCounts["IN PROGRESS"]?"var(--amber)":"var(--ink)", "abnormal", "IN PROGRESS"],
+    ["Abnormal: Closed", caseCounts.CLOSED, "var(--green)", "abnormal", "CLOSED"],
     ["Selisih QTY", s.qty, s.qty?"var(--red)":"var(--ink)", "qty"],
     ["Selisih CBM", s.cbm, s.cbm?"var(--amber)":"var(--ink)", "cbm"],
     ["SO/PO Beda", s.sopo, s.sopo?"var(--amber)":"var(--ink)", "sopo"],
@@ -3609,7 +3931,7 @@ function renderDashboard(){
   $("#dashGrid").innerHTML = fields.map(function(f){
     var dead = !f[1] && f[3];
     var isActive = f[3] && (view.filter===f[3] || (view.filter==="issues" && f[3]==="abnormal"));
-    return '<div class="card '+(dead?'dead':'')+' '+(isActive?'active':'')+'" '+(f[3]?'data-filter="'+f[3]+'"':'')+'>'+
+    return '<div class="card '+(dead?'dead':'')+' '+(isActive?'active':'')+'" '+(f[3]?'data-filter="'+f[3]+'"':'')+(f[4]?' data-abn-only="'+C.esc(f[4])+'"':'')+'>'+
       '<div class="num" style="color:'+f[2]+'">'+ (typeof f[1]==='number'?C.fmtNum(f[1]):f[1]) +'</div>'+
       '<div class="lbl">'+C.esc(f[0])+'</div></div>';
   }).join("");
@@ -3618,6 +3940,9 @@ function renderDashboard(){
     cardEl.addEventListener("click", function(){
       if (cardEl.classList.contains("dead")) return;
       view.filter = cardEl.getAttribute("data-filter"); view.mode="nopen"; view.page = 0;
+      var abnOnly = cardEl.getAttribute("data-abn-only");
+      if (abnOnly === "ACTIVE") view.abnormalStatus = {"OPEN":true,"IN PROGRESS":true,"CLOSED":false};
+      else if (abnOnly) view.abnormalStatus = {"OPEN":abnOnly==="OPEN","IN PROGRESS":abnOnly==="IN PROGRESS","CLOSED":abnOnly==="CLOSED"};
       renderDashboard();
       renderTable();
       SessionMgr.broadcastViewState(view);
@@ -3663,6 +3988,24 @@ function currentPack(){
 function rowBrand(r){ return r._brand || view.brand; }
 function has(r, cls){ return r.CLASSES.indexOf(cls) !== -1; }
 
+// Status efektif tiap finding/klasifikasi abnormal pada 1 row: kalau sudah ada case
+// dengan case_type yang cocok, pakai status case itu; kalau belum pernah dibuatkan
+// case sama sekali, dianggap "OPEN" (temuan abnormal yang belum ditindaklanjuti tidak
+// boleh "hilang" begitu saja dari dashboard/filter hanya karena belum dicatat manual).
+function rowFindingStatuses(r, brand){
+  var classes = (r.CLASSES||[]).filter(function(cls){ return cls !== E.CLASS.MATCHED; });
+  if (!classes.length) return [];
+  var cases = CASES.getAllForNopen(brand, r.NOPEN);
+  return classes.map(function(cls){
+    var ct = CASES.CLASS_TO_CASE_TYPE[cls] || "OTHER";
+    var match = cases.filter(function(c){ return c.caseType === ct; });
+    if (!match.length) return "OPEN";
+    var openOnes = match.filter(function(c){ return c.status !== "CLOSED"; });
+    var pick = (openOnes.length ? openOnes : match).sort(function(a,b){ return (b.updatedAt||"")<(a.updatedAt||"")?-1:1; })[0];
+    return pick.status;
+  });
+}
+
 function baseFilteredRows(){
   var pack = currentPack();
   if (!pack) return [];
@@ -3676,7 +4019,15 @@ function baseFilteredRows(){
   switch(view.filter){
     case "issues": rows = rows.filter(E.isIssue); break;
     case "clear": rows = rows.filter(function(r){ return r.ROW_STATUS==="CLEAR"; }); break;
-    case "abnormal": rows = rows.filter(function(r){ return r.ROW_STATUS==="ABNORMAL"; }); break;
+    case "abnormal":
+      rows = rows.filter(function(r){
+        if (r.ROW_STATUS!=="ABNORMAL") return false;
+        var want = view.abnormalStatus || {};
+        var anyChecked = want.OPEN || want["IN PROGRESS"] || want.CLOSED;
+        if (!anyChecked) return true; // tidak ada sub-filter dicentang = tampilkan semua (perilaku lama)
+        return rowFindingStatuses(r, rowBrand(r)).some(function(s){ return !!want[s]; });
+      });
+      break;
     case "qty": rows = rows.filter(function(r){ return has(r,E.CLASS.QTY_MISMATCH); }); break;
     case "cbm": rows = rows.filter(function(r){ return has(r,E.CLASS.CBM_MISMATCH); }); break;
     case "sopo": rows = rows.filter(function(r){ return has(r,E.CLASS.SO_MISMATCH)||has(r,E.CLASS.PO_MISMATCH)||has(r,E.CLASS.SO_PO_MISMATCH); }); break;
@@ -3684,13 +4035,13 @@ function baseFilteredRows(){
     case "cmponly": rows = rows.filter(function(r){ return has(r,E.CLASS.ONLY_IN_IOR)||has(r,E.CLASS.ONLY_IN_DRR); }); break;
     case "historical": rows = rows.filter(function(r){ return has(r,E.CLASS.HISTORICAL_MATCH); }); break;
     case "invalid": rows = rows.filter(function(r){ return has(r,E.CLASS.INVALID_DATA); }); break;
-    case "hasnote": rows = rows.filter(function(r){ return !!CASES.get(rowBrand(r), r.NOPEN); }); break;
-    case "nonote": rows = rows.filter(function(r){ return E.isIssue(r) && !CASES.get(rowBrand(r), r.NOPEN); }); break;
-    case "open": rows = rows.filter(function(r){ var c=CASES.get(rowBrand(r),r.NOPEN); return c && c.status!=="CLOSED" && c.status!=="RESOLVED"; }); break;
+    case "hasnote": rows = rows.filter(function(r){ return CASES.getAllForNopen(rowBrand(r), r.NOPEN).length>0; }); break;
+    case "nonote": rows = rows.filter(function(r){ return E.isIssue(r) && CASES.getAllForNopen(rowBrand(r), r.NOPEN).length===0; }); break;
+    case "open": rows = rows.filter(function(r){ return CASES.getAllForNopen(rowBrand(r), r.NOPEN).some(function(c){ return c.status!=="CLOSED"; }); }); break;
   }
   if (q) rows = rows.filter(function(r){
-    var c = CASES.get(rowBrand(r), r.NOPEN);
-    return (r.NOPEN+" "+r.SHIPPER+" "+r.KETERANGAN+" "+r.EXPLANATION+" "+(r.AUTO||"")+" "+(c?c.remark+" "+c.pic:"" )).toLowerCase().indexOf(q) !== -1;
+    var caseText = CASES.getAllForNopen(rowBrand(r), r.NOPEN).map(function(c){ return c.remark+" "+c.pic; }).join(" ");
+    return (r.NOPEN+" "+r.SHIPPER+" "+r.KETERANGAN+" "+r.EXPLANATION+" "+(r.AUTO||"")+" "+caseText).toLowerCase().indexOf(q) !== -1;
   });
   return rows;
 }
@@ -3714,7 +4065,7 @@ function tableFilterDefs(){
     {key:"cbm", label:"CBM (SCM/"+lbl+")", get:function(r){return (C.fmtNumFlag(r.CBM_SCM,r.CBM_SCM_INVALID,3)+" / "+C.fmtNumFlag(r.CBM_CMP,r.CBM_CMP_INVALID,3));}},
     {key:"dcbm", label:"Δ CBM", get:function(r){return r.CBM_DIFF===null||r.CBM_DIFF===undefined?"":C.fmtNum(r.CBM_DIFF,3);}},
     {key:"ket", label:"Keterangan", get:function(r){return (r.EXPLANATION||"");}},
-    {key:"case", label:"Case", get:function(r){var c=CASES.get(rowBrand(r),r.NOPEN); return c?c.status:"";}}
+    {key:"case", label:"Case", get:function(r){var c=CASES.primaryCase(rowBrand(r),r.NOPEN); return c?c.status:"";}}
   ];
   if (view.brand === "ALL") defs.splice(1,0,{key:"brand",label:"Brand",get:function(r){return rowBrand(r)||"";}});
   return defs;
@@ -3776,6 +4127,18 @@ function renderTable(){
     return '<span class="chip '+(view.filter===f[0]?'active':'')+'" data-f="'+f[0]+'">'+C.esc(f[1])+'</span>';
   }).join("") : "";
 
+  // Sub-filter status (Open/In Progress/Closed), multi-select, cuma muncul saat
+  // tab "Abnormal" aktif -- lihat rowFindingStatuses() untuk cara pencocokannya.
+  var abnEl = $("#abnormalSubFilter");
+  if (abnEl){
+    abnEl.innerHTML = (view.mode==="nopen" && view.filter==="abnormal") ? (
+      '<span style="font-size:11.5px;color:var(--ink-faint);align-self:center;margin-right:2px;">Status:</span>' +
+      CASES.STATUS.map(function(s){
+        return '<span class="chip '+(view.abnormalStatus[s]?'active':'')+'" data-abn-status="'+C.esc(s)+'">'+C.esc(s)+'</span>';
+      }).join("")
+    ) : "";
+  }
+
   if (!pack){
     $("#resultsTable").querySelector("tbody").innerHTML = '<tr><td class="empty-state">Berkas untuk merek ini belum dimuat.</td></tr>';
     $("#tableMeta").textContent = "—"; $("#pager").innerHTML=""; return;
@@ -3804,14 +4167,24 @@ function renderTable(){
       ? '<tr><td colspan="'+(brandCol?17:16)+'"><div class="empty-state">Tidak ada baris pada saringan ini.</div></td></tr>'
       : slice.map(function(r){
           var rb = rowBrand(r);
-          var c = CASES.get(rb, r.NOPEN);
-          var qtyAdj = c ? (c.qtyAdj||0) : 0, cbmAdj = c ? (c.cbmAdj||0) : 0;
+          var cs = CASES.getAllForNopen(rb, r.NOPEN);
+          var qtyAdj = 0, cbmAdj = 0;
+          cs.forEach(function(cc){ if (cc.status!=="CLOSED"){ qtyAdj += cc.qtyAdj||0; cbmAdj += cc.cbmAdj||0; } });
           var qtyDiffAdj = r.QTY_DIFF===null ? null : C.r3(r.QTY_DIFF - qtyAdj);
           var cbmDiffAdj = r.CBM_DIFF===null ? null : C.r3(r.CBM_DIFF - cbmAdj);
-          var caseCell = c
-            ? '<button type="button" class="notecell filled" data-nopen="'+C.esc(r.NOPEN)+'" data-brand="'+C.esc(rb)+'" title="'+C.esc(c.remark||"")+'">'+chip(c.status, CASES.STATUS_KIND[c.status]||"flag")+
-              '<span class="notetext">'+C.esc(c.remark||"(tanpa remark)")+'</span>'+(c.pic?'<span class="notepic">PIC: '+C.esc(c.pic)+'</span>':'')+'</button>'
-            : '<button type="button" class="notecell" data-nopen="'+C.esc(r.NOPEN)+'" data-brand="'+C.esc(rb)+'">+ tindak lanjut</button>';
+          var caseCell;
+          if (!cs.length){
+            caseCell = '<button type="button" class="notecell" data-nopen="'+C.esc(r.NOPEN)+'" data-brand="'+C.esc(rb)+'">+ tindak lanjut</button>';
+          } else if (cs.length === 1){
+            var c0 = cs[0];
+            caseCell = '<button type="button" class="notecell filled" data-nopen="'+C.esc(r.NOPEN)+'" data-brand="'+C.esc(rb)+'" title="'+C.esc(c0.remark||"")+'">'+chip(c0.status, CASES.STATUS_KIND[c0.status]||"flag")+
+              '<span class="notetext">'+C.esc(c0.remark||"(tanpa remark)")+'</span>'+(c0.pic?'<span class="notepic">PIC: '+C.esc(c0.pic)+'</span>':'')+'</button>';
+          } else {
+            var counts = {}; cs.forEach(function(cc){ counts[cc.status] = (counts[cc.status]||0)+1; });
+            var summary = CASES.STATUS.map(function(s){ return counts[s] ? (counts[s]+" "+s) : null; }).filter(Boolean).join(" · ");
+            caseCell = '<button type="button" class="notecell filled" data-nopen="'+C.esc(r.NOPEN)+'" data-brand="'+C.esc(rb)+'" title="'+cs.length+' case pada NOPEN ini">'+chip(cs.length+" case","flag")+
+              '<span class="notetext">'+C.esc(summary)+'</span></button>';
+          }
           var soCellStyle = r.SO_DIFF ? "color:var(--red);font-weight:800;" : "";
           var poCellStyle = r.PO_DIFF ? "color:var(--red);font-weight:800;" : "";
           var ketPlain = r.EXPLANATION + (qtyAdj||cbmAdj ? " [Disesuaikan]" : "");
@@ -3862,16 +4235,69 @@ function renderTable(){
 /* ============================================================
    MODAL: DETAIL NOPEN + CASE MANAGEMENT
 ============================================================ */
-function openCase(nopen, brandParam){
+// Case ID tampil ke user sebagai "<NOPEN>-<urutan>" (brand disembunyikan --
+// baris tabel sudah menunjukkan brand-nya, jadi tidak perlu diulang di sini).
+function displayCaseId(caseId){
+  var p = CASES.parseKey(caseId);
+  return p.nopen + "-" + p.seq;
+}
+function findCaseRow(nopen, brand){
   var pack = currentPack();
-  var row = pack ? pack.main.filter(function(r){ return r.NOPEN===nopen && (!brandParam || rowBrand(r)===brandParam); })[0] : null;
-  if (!row) return;
-  var brand = brandParam || rowBrand(row);
-  var c = CASES.get(brand, nopen);
-  editing = {brand:brand, nopen:nopen, row:row, baseUpdatedAt: c ? c.updatedAt : null};
-  SessionMgr.broadcastCaseOpened(brand, nopen);
+  var row = pack ? pack.main.filter(function(r){ return r.NOPEN===nopen && (!brand || rowBrand(r)===brand); })[0] : null;
+  return {pack: pack, row: row};
+}
 
+// Dispatcher: NOPEN dgn 0/1 case -> langsung form detail (tampilan sama seperti
+// sebelum fitur multi-case, tidak ada langkah tambahan). NOPEN dgn >1 case ->
+// tampilkan daftar case dulu supaya user memilih mana yang mau dibuka.
+function openCase(nopen, brandParam){
+  var ctx = findCaseRow(nopen, brandParam);
+  if (!ctx.row) return;
+  var brand = brandParam || rowBrand(ctx.row);
+  SessionMgr.broadcastCaseOpened(brand, nopen);
+  var cases = CASES.getAllForNopen(brand, nopen);
+  if (cases.length > 1) openCaseList(nopen, brand);
+  else openCaseDetail(nopen, brand, cases[0] || null);
+}
+
+function openCaseList(nopen, brand){
+  var ctx = findCaseRow(nopen, brand);
+  if (!ctx.row) return;
+  var row = ctx.row;
+  var cases = CASES.getAllForNopen(brand, nopen);
+  editing = null;
   $("#nmTitle").textContent = "NOPEN " + nopen;
+  $("#nmSub").textContent = (brand==="ADIDAS"?"Adidas":"Nike") + " · " + (row.SHIPPER || "tanpa shipper") + " · " + cases.length + " case";
+  $("#modalBody").innerHTML =
+    '<div class="detail-section"><h4>Daftar Case / Finding pada NOPEN ini</h4>'+
+      '<div class="case-list">' + cases.map(function(c){
+        return '<button type="button" class="case-list-item" data-case-id="'+C.esc(c.id)+'" '+
+          'style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;text-align:left;padding:10px;border:1px solid var(--border-strong);border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;">'+
+          '<strong class="mono">'+C.esc(displayCaseId(c.id))+'</strong>'+
+          chip(CASES.CASE_TYPE_LABEL[c.caseType]||c.caseType, "flag")+
+          chip(c.status, CASES.STATUS_KIND[c.status]||"flag")+
+          '<span style="flex:1;min-width:120px;color:var(--ink-soft);">'+C.esc(c.remark||"(tanpa remark)")+'</span>'+
+          (c.pic?'<span class="notepic">PIC: '+C.esc(c.pic)+'</span>':'')+
+        '</button>';
+      }).join("") +
+      '</div>'+
+      '<button class="btn btn-primary btn-small" id="nmAddCase" style="margin-top:6px;">+ Tambah Case Baru</button>'+
+    '</div>';
+  $$(".case-list-item").forEach(function(b){
+    b.addEventListener("click", function(){ openCaseDetail(nopen, brand, CASES.get(b.getAttribute("data-case-id"))); });
+  });
+  $("#nmAddCase").addEventListener("click", function(){ openCaseDetail(nopen, brand, null); });
+  $("#modalOverlay").classList.add("open");
+}
+
+function openCaseDetail(nopen, brand, c){
+  var ctx = findCaseRow(nopen, brand);
+  if (!ctx.row) return;
+  var row = ctx.row, pack = ctx.pack;
+  editing = {brand:brand, nopen:nopen, caseId: c?c.id:null, row:row, baseUpdatedAt: c?c.updatedAt:null};
+  var siblingCount = CASES.getAllForNopen(brand, nopen).filter(function(x){ return !c || x.id!==c.id; }).length;
+
+  $("#nmTitle").textContent = "NOPEN " + nopen + (c ? " · Case " + displayCaseId(c.id) : " · Case Baru");
   $("#nmSub").textContent = (brand==="ADIDAS"?"Adidas":"Nike") + " · " + (row.SHIPPER || "tanpa shipper");
 
   function chipList(arr, otherSet){
@@ -3890,7 +4316,14 @@ function openCase(nopen, brandParam){
       (row.QTY_PACKAGE_MATCH===false?' (berbeda, informasional)':row.QTY_PACKAGE_MATCH?' (cocok)':'')+'</div>';
   }
 
+  var backLinkHtml = siblingCount ? '<button type="button" class="btn btn-ghost btn-small" id="nmBackToList" style="margin-bottom:10px;">← Kembali ke daftar case ('+(siblingCount+1)+')</button>' : '';
+  var caseTypeDefault = c ? c.caseType : (CASES.CLASS_TO_CASE_TYPE[row.PRIMARY] || "OTHER");
+  var caseTypeSelectHtml = '<div class="field"><label>Jenis Case</label><select id="nmCaseType">' +
+    CASES.CASE_TYPE.map(function(t){ return '<option value="'+t+'" '+(caseTypeDefault===t?'selected':'')+'>'+C.esc(CASES.CASE_TYPE_LABEL[t]||t)+'</option>'; }).join("") +
+    '</select></div>';
+
   $("#modalBody").innerHTML =
+    backLinkHtml +
     '<div class="detail-section"><h4>Ringkasan</h4><div class="kv-grid">'+
       '<div class="k">Status</div><div class="v">'+sevChip(row)+'</div>'+
       '<div class="k">Priority</div><div class="v">'+C.esc(row.PRIORITY)+'</div>'+
@@ -3939,6 +4372,7 @@ function openCase(nopen, brandParam){
 
     '<div class="detail-section"><h4>Case / Tindak Lanjut</h4>'+
       '<div class="adj-box">'+
+        '<div class="adj-row">'+caseTypeSelectHtml+'</div>'+
         '<div class="status-pills" id="nmStatusPills">'+CASES.STATUS.map(function(s){
           return '<button type="button" class="status-pill" data-s="'+s+'" aria-pressed="'+((c?c.status:"OPEN")===s)+'">'+s+'</button>';
         }).join("")+'</div>'+
@@ -3948,12 +4382,15 @@ function openCase(nopen, brandParam){
           '<button class="btn btn-primary btn-small" id="nmSave">💾 Simpan</button>'+
           (c ? '<button class="btn btn-ghost btn-small" id="nmDelete" style="color:var(--red);">Hapus Case</button>' : '') +
         '</div>'+
-        '<div class="case-meta">'+(c?"Dibuat "+C.fmtStamp(c.createdAt)+" · diperbarui "+C.fmtStamp(c.updatedAt):"Belum ada case untuk NOPEN ini.")+'</div>'+
+        '<div class="case-meta">'+(c?("Case "+C.esc(displayCaseId(c.id))+" · Dibuat "+C.fmtStamp(c.createdAt)+" · diperbarui "+C.fmtStamp(c.updatedAt)):"Case baru untuk NOPEN ini -- belum tersimpan.")+'</div>'+
         '<ul class="audit-list">'+((c&&c.audit&&c.audit.length) ? c.audit.slice().reverse().map(function(a){
           return '<li><span class="a-at">'+C.esc(C.fmtStamp(a.at))+'</span><span class="a-by">'+C.esc(a.by)+'</span><span>'+C.esc(a.what)+'</span></li>';
         }).join("") : '<li style="color:var(--ink-faint);">Belum ada riwayat perubahan.</li>')+'</ul>'+
       '</div>'+
     '</div>';
+
+  var backBtn = $("#nmBackToList");
+  if (backBtn) backBtn.addEventListener("click", function(){ openCaseList(nopen, brand); });
 
   $$("#nmStatusPills .status-pill").forEach(function(b){
     b.addEventListener("click", function(){
@@ -3963,10 +4400,13 @@ function openCase(nopen, brandParam){
   $("#nmSave").addEventListener("click", saveCase);
   var delBtn = $("#nmDelete");
   if (delBtn) delBtn.addEventListener("click", async function(){
-    var ok = await gltConfirm("Hapus case untuk NOPEN " + editing.nopen + "?\n\nRemark, PIC, penyesuaian, dan riwayat perubahan case ini akan hilang. Tindakan ini tidak bisa dibatalkan.", {danger:true, okLabel:"Hapus"});
+    var ok = await gltConfirm("Hapus case " + displayCaseId(c.id) + " untuk NOPEN " + editing.nopen + "?\n\nRemark, PIC, penyesuaian, dan riwayat perubahan case ini akan hilang. Tindakan ini tidak bisa dibatalkan.", {danger:true, okLabel:"Hapus"});
     if (!ok) return;
-    CASES.remove(editing.brand, editing.nopen);
-    closeCase(); renderResults();
+    CASES.remove(c.id);
+    var remaining = CASES.getAllForNopen(editing.brand, editing.nopen);
+    if (remaining.length) openCaseList(editing.nopen, editing.brand);
+    else { closeCase(); }
+    renderResults();
   });
 
   function updateAdjPreview(){
@@ -3989,22 +4429,35 @@ function closeCase(){ $("#modalOverlay").classList.remove("open"); editing = nul
 async function saveCase(){
   if (!editing) return;
   var st = ($$("#nmStatusPills .status-pill").filter(function(b){ return b.getAttribute("aria-pressed")==="true"; })[0] || {}).dataset;
+  var qtyAdjVal = parseFloat($("#nmQtyAdj").value) || 0;
   var fields = {
     remark: $("#nmRemark").value, pic: CASES.currentUser(), status: st ? st.s : "OPEN",
-    qtyAdj: parseFloat($("#nmQtyAdj").value) || 0,
+    qtyAdj: qtyAdjVal,
     cbmAdj: parseFloat($("#nmCbmAdj").value) || 0,
     qtyAdjNote: $("#nmQtyAdjNote").value,
     cbmAdjNote: $("#nmCbmAdjNote").value
   };
-  var context = {issueType: editing.row.PRIMARY, severity: editing.row.SEVERITY};
+  // Basis "qty yang belum tersedia" saat penyesuaian ini dibuat -- disimpan diam-diam
+  // di balik layar (bukan field terpisah di form) supaya evaluasi ulang otomatis tiap
+  // run() baru (reevaluateQtyAdjustments()) tahu berapa qty yang tadinya ditunggu.
+  // Hanya relevan selama row ini masih ONLY_IN_SCM (comparator belum ada sama sekali).
+  if (has(editing.row, E.CLASS.ONLY_IN_SCM)) fields.qtyExpected = qtyAdjVal || null;
+  var caseTypeSel = $("#nmCaseType");
+  var context = {
+    caseType: caseTypeSel ? caseTypeSel.value : "OTHER",
+    issueType: editing.row.PRIMARY, severity: editing.row.SEVERITY
+  };
+
+  var isExisting = !!editing.caseId;
 
   // --- Concurrent editing: deteksi apakah orang lain sudah mengubah case ini
   // di server sejak form ini dibuka. Jangan silent overwrite -- munculkan
   // konfirmasi. Kalau pengecekan sendiri gagal (mis. offline), lanjut simpan
   // seperti biasa supaya kegagalan jaringan tidak memblokir pekerjaan.
-  if (supaReady && currentUser){
+  // (Case baru tidak punya konflik untuk dicek -- id-nya belum ada di server.)
+  if (isExisting && supaReady && currentUser){
     try{
-      var chk = await supa.from("inbound_cases").select("updated_at,user_name").eq("id", editing.brand+"|"+editing.nopen).maybeSingle();
+      var chk = await supa.from("inbound_cases").select("updated_at,user_name").eq("id", editing.caseId).maybeSingle();
       if (!chk.error && chk.data && editing.baseUpdatedAt && chk.data.updated_at &&
           String(chk.data.updated_at) > String(editing.baseUpdatedAt)){
         var overwrite = await gltConfirm(
@@ -4022,7 +4475,8 @@ async function saveCase(){
     }catch(e){ console.warn("Gagal memeriksa konflik case (lanjut simpan):", e); }
   }
 
-  CASES.save(editing.brand, editing.nopen, fields, context);
+  var caseId = isExisting ? editing.caseId : CASES.nextCaseId(editing.brand, editing.nopen);
+  CASES.save(caseId, editing.brand, editing.nopen, fields, context);
   closeCase();
   renderResults();
 }
@@ -4153,6 +4607,11 @@ function init(){
       return;
     }
     if ((t = e.target.closest(".chip[data-f]"))){ view.filter = t.getAttribute("data-f"); view.page = 0; renderDashboard(); renderTable(); SessionMgr.broadcastViewState(view); return; }
+    if ((t = e.target.closest(".chip[data-abn-status]"))){
+      var st = t.getAttribute("data-abn-status");
+      view.abnormalStatus[st] = !view.abnormalStatus[st];
+      view.page = 0; renderTable(); SessionMgr.broadcastViewState(view); return;
+    }
     if (e.target.id === "modalOverlay") closeCase();
   });
 
