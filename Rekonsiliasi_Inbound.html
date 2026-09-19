@@ -3075,15 +3075,16 @@ APP.exporter = (function (C, E, CASES) {
     return rows;
   }
 
-  /* ---------------- SHEET: RIWAYAT NOPEN (ringkasan 1 baris/case, termasuk yang sudah Closed/dihapus) ----------------
-     Beda dari "Case per Finding" (yang cuma berisi case AKTIF lokal): sheet ini
-     sumbernya dari server tanpa filter deleted_at, jadi benar-benar historis --
-     dipakai user untuk menelusuri "NOPEN mana saja yang pernah punya catatan,
-     siapa PIC-nya, apa temuannya, dan bagaimana status terakhirnya" walau case-nya
-     sudah dihapus/di-Closed. `nopenScope` (opsional, Set "<brand>|<nopen>") dipakai
-     export hasil filter supaya sheet ini ikut ter-scope ke NOPEN yang sedang difilter. */
-  var HIST_NOTES_HEAD = ["NOPEN", "Brand", "Case ID", "Temuan", "PIC", "Status Terakhir", "Dihapus?"];
-  var HIST_NOTES_COLS = [12, 9, 14, 20, 20, 14, 10];
+  /* ---------------- SHEET: RIWAYAT NOPEN (timeline lengkap per perubahan, termasuk yang sudah Closed/dihapus) ----------------
+     Beda dari "Case per Finding" (yang cuma berisi case AKTIF lokal, 1 baris/case
+     kondisi TERKINI): sheet ini 1 baris PER PERUBAHAN (timeline, dari kolom audit
+     yang sudah ada di tiap case sejak awal), sumbernya dari server tanpa filter
+     deleted_at, jadi benar-benar historis -- dipakai user menelusuri kronologi
+     lengkap tiap case: kapan dibuat, kapan status berubah, siapa yang mengubah,
+     dan remark-nya. `nopenScope` (opsional, Set "<brand>|<nopen>") dipakai export
+     hasil filter supaya sheet ini ikut ter-scope ke NOPEN yang sedang difilter. */
+  var HIST_NOTES_HEAD = ["NOPEN", "Brand", "Case ID", "Temuan", "PIC", "Status Terakhir", "Remark", "Waktu Perubahan", "Oleh", "Perubahan", "Dihapus?"];
+  var HIST_NOTES_COLS = [12, 9, 14, 20, 20, 14, 50, 18, 22, 60, 10];
   function aoaHistoricalNotes(caseRows, nopenScope) {
     var rows = [HIST_NOTES_HEAD];
     (caseRows || [])
@@ -3091,7 +3092,16 @@ APP.exporter = (function (C, E, CASES) {
       .slice().sort(function (a, b) {
         return String(a.nopen) < String(b.nopen) ? -1 : String(a.nopen) > String(b.nopen) ? 1 : (a.id < b.id ? -1 : 1);
       }).forEach(function (c) {
-        rows.push([sc(c.nopen), c.brand, displayCaseId(c.id), sc(CASES.CASE_TYPE_LABEL[c.case_type] || c.case_type || ""), sc(c.pic), c.status, c.deleted_at ? "Ya" : ""]);
+        var base = [sc(c.nopen), c.brand, displayCaseId(c.id), sc(CASES.CASE_TYPE_LABEL[c.case_type] || c.case_type || ""), sc(c.pic), c.status, sc(c.remark || "")];
+        var audit = Array.isArray(c.audit) ? c.audit : [];
+        var deleted = c.deleted_at ? "Ya" : "Tidak";
+        if (!audit.length) {
+          rows.push(base.concat(["", "", "(tidak ada riwayat audit)", deleted]));
+          return;
+        }
+        audit.forEach(function (a) {
+          rows.push(base.concat([C.fmtStamp(a.at), sc(a.by), sc(a.what), deleted]));
+        });
       });
     return rows;
   }
