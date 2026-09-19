@@ -128,9 +128,16 @@ body{
 .brand-tab[aria-selected="true"]{background:var(--navy); color:#fff; border-color:var(--navy);}
 .brand-tab:disabled{opacity:0.4;cursor:not-allowed;}
 .scope-note{background:var(--accent-soft); border:1px solid #c9dcfb; border-radius:8px; padding:8px 12px; font-size:11.5px; color:#1d4ba8; margin-bottom:14px;}
-.dash-grid{display:grid; grid-template-columns:repeat(6, 1fr); gap:12px;}
+.dash-grid{display:grid; grid-template-columns:repeat(6, 1fr); gap:12px; margin-bottom:12px;}
+.dash-grid:last-of-type{margin-bottom:0;}
 @media (max-width:1200px){ .dash-grid{grid-template-columns:repeat(3,1fr);} }
 @media (max-width:640px){ .dash-grid{grid-template-columns:repeat(2,1fr);} }
+/* Grup ringkasan Abnormal (Total Abnormal, Aktif, Open, In Progress, Closed) --
+   selalu 1 baris menyamping di layar lebar, terpisah dari grid metrik lainnya. */
+.dash-grid-abnormal{grid-template-columns:repeat(5, 1fr);}
+.dash-grid-abnormal .card{background:#fff7f7;border-color:#f3caca;}
+@media (max-width:1200px){ .dash-grid-abnormal{grid-template-columns:repeat(3,1fr);} }
+@media (max-width:640px){ .dash-grid-abnormal{grid-template-columns:repeat(2,1fr);} }
 .card{border:1px solid var(--border); border-radius:10px; padding:12px 14px; background:#fbfcfe; cursor:pointer; transition:all .12s ease;}
 .card:hover{border-color:var(--accent); transform:translateY(-1px);}
 .card.active{border-color:var(--accent); background:var(--accent-soft); box-shadow:0 0 0 2px var(--accent-soft) inset; transform:translateY(-1px);}
@@ -438,6 +445,7 @@ body{padding-top:38px;}
       <div class="panel-title">
         <h2>Dashboard <span id="dashBrandLabel" style="font-weight:400;color:var(--ink-faint);font-size:12px;"></span></h2>
       </div>
+      <div class="dash-grid dash-grid-abnormal" id="dashAbnormalGrid"></div>
       <div class="dash-grid" id="dashGrid"></div>
       <div class="months-row" id="monthsRow"></div>
       <div class="qtypkg-note" id="qtyPkgNote" style="display:none;"></div>
@@ -3060,6 +3068,27 @@ APP.exporter = (function (C, E, CASES) {
     return rows;
   }
 
+  /* ---------------- SHEET: RIWAYAT NOPEN (ringkasan 1 baris/case, termasuk yang sudah Closed/dihapus) ----------------
+     Beda dari "Case per Finding" (yang cuma berisi case AKTIF lokal): sheet ini
+     sumbernya dari server tanpa filter deleted_at, jadi benar-benar historis --
+     dipakai user untuk menelusuri "NOPEN mana saja yang pernah punya catatan,
+     siapa PIC-nya, apa temuannya, dan bagaimana status terakhirnya" walau case-nya
+     sudah dihapus/di-Closed. `nopenScope` (opsional, Set "<brand>|<nopen>") dipakai
+     export hasil filter supaya sheet ini ikut ter-scope ke NOPEN yang sedang difilter. */
+  var HIST_NOTES_HEAD = ["NOPEN", "Brand", "Case ID", "Temuan", "PIC", "Status Terakhir", "Dihapus?"];
+  var HIST_NOTES_COLS = [12, 9, 14, 20, 20, 14, 10];
+  function aoaHistoricalNotes(caseRows, nopenScope) {
+    var rows = [HIST_NOTES_HEAD];
+    (caseRows || [])
+      .filter(function (c) { return !nopenScope || nopenScope.has(c.brand + "|" + c.nopen); })
+      .slice().sort(function (a, b) {
+        return String(a.nopen) < String(b.nopen) ? -1 : String(a.nopen) > String(b.nopen) ? 1 : (a.id < b.id ? -1 : 1);
+      }).forEach(function (c) {
+        rows.push([sc(c.nopen), c.brand, displayCaseId(c.id), sc(CASES.CASE_TYPE_LABEL[c.case_type] || c.case_type || ""), sc(c.pic), c.status, c.deleted_at ? "Ya" : ""]);
+      });
+    return rows;
+  }
+
   /* ---------------- SHEET: RIWAYAT CASE (histori lengkap, termasuk yang sudah dihapus) ----------------
      Satu baris per perubahan (bukan per NOPEN), diambil dari kolom audit yang sudah
      ada di setiap case sejak awal -- "by" di situ selalu nama asli (teks), jadi
@@ -3226,6 +3255,8 @@ APP.exporter = (function (C, E, CASES) {
       [30, 18, 12, 14, 12, 14, 16, 16, 18, 12, 12, 20, 40]), "Data Quality");
 
     if (state._caseHistory) {
+      var wsNotes = sheetFrom(aoaHistoricalNotes(state._caseHistory), HIST_NOTES_COLS);
+      XLSX.utils.book_append_sheet(wb, wsNotes, "Riwayat NOPEN");
       var wsHist = sheetFrom(aoaCaseHistory(state._caseHistory), CASE_HISTORY_COLS);
       XLSX.utils.book_append_sheet(wb, wsHist, "Riwayat Case");
     }
@@ -3261,6 +3292,16 @@ APP.exporter = (function (C, E, CASES) {
       ["Diekspor", exportedAt]
     ];
     XLSX.utils.book_append_sheet(wb, sheetFrom(infoAoa, [22, 70]), "Info Filter");
+
+    // Riwayat NOPEN (catatan/case historis) di-scope ke NOPEN yang lolos filter
+    // aktif ini saja -- supaya export filter tetap fokus, bukan seluruh histori.
+    if (state._caseHistory) {
+      var scopeSet = new Set();
+      (filteredRowsPack.main || []).forEach(function (r) { scopeSet.add((r._brand || brand) + "|" + r.NOPEN); });
+      (filteredRowsPack.detail || []).forEach(function (d) { scopeSet.add((d._brand || brand) + "|" + d.NOPEN); });
+      var wsNotesF = sheetFrom(aoaHistoricalNotes(state._caseHistory, scopeSet), HIST_NOTES_COLS);
+      XLSX.utils.book_append_sheet(wb, wsNotesF, "Riwayat NOPEN");
+    }
 
     if (mode === "detail") {
       var detailRows = filteredRowsPack.detail || [];
@@ -3899,6 +3940,7 @@ function renderDashboard(){
   $("#dashBrandLabel").textContent = brand === "ADIDAS" ? "— Adidas (SCM ↔ IOR)" : (brand === "NIKE" ? "— Nike (SCM ↔ DRR)" : "— Semua (SCM ↔ IOR + DRR)");
 
   if (!s){
+    $("#dashAbnormalGrid").innerHTML = "";
     $("#dashGrid").innerHTML = '<div class="empty-state">Berkas untuk merek ini belum dimuat.</div>';
     $("#monthsRow").innerHTML = ""; $("#qtyPkgNote").style.display = "none";
     return;
@@ -3910,14 +3952,18 @@ function renderDashboard(){
   // secara mesin rekonsiliasi.
   var caseCounts = caseFindingCounts(pack, brand);
 
-  var fields = [
-    ["Total NOPEN", s.total, "var(--ink)", "all"],
-    ["Clear", s.clear, "var(--green)", "clear"],
-    ["Abnormal", s.abnormal, s.abnormal?"var(--red)":"var(--ink)", "abnormal"],
+  // Grup ringkasan Abnormal -- selalu ditaruh 1 baris tersendiri (lihat CSS
+  // .dash-grid-abnormal) supaya tidak terpotong/tercampur oleh grid metrik lain.
+  var abnormalFields = [
+    ["Total Abnormal", s.abnormal, s.abnormal?"var(--red)":"var(--ink)", "abnormal"],
     ["Abnormal Aktif (Open+In Progress)", caseCounts.OPEN+caseCounts["IN PROGRESS"], "var(--red)", "abnormal", "ACTIVE"],
     ["Abnormal: Open", caseCounts.OPEN, caseCounts.OPEN?"var(--red)":"var(--ink)", "abnormal", "OPEN"],
     ["Abnormal: In Progress", caseCounts["IN PROGRESS"], caseCounts["IN PROGRESS"]?"var(--amber)":"var(--ink)", "abnormal", "IN PROGRESS"],
-    ["Abnormal: Closed", caseCounts.CLOSED, "var(--green)", "abnormal", "CLOSED"],
+    ["Abnormal: Closed", caseCounts.CLOSED, "var(--green)", "abnormal", "CLOSED"]
+  ];
+  var otherFields = [
+    ["Total NOPEN", s.total, "var(--ink)", "all"],
+    ["Clear", s.clear, "var(--green)", "clear"],
     ["Selisih QTY", s.qty, s.qty?"var(--red)":"var(--ink)", "qty"],
     ["Selisih CBM", s.cbm, s.cbm?"var(--amber)":"var(--ink)", "cbm"],
     ["SO/PO Beda", s.sopo, s.sopo?"var(--amber)":"var(--ink)", "sopo"],
@@ -3928,26 +3974,31 @@ function renderDashboard(){
     ["Ada Catatan", noteCount, "var(--purple)", "hasnote"],
     ["Clear Rate", Math.round(s.clearRate*10)/10 + "%", "var(--green)", null]
   ];
-  $("#dashGrid").innerHTML = fields.map(function(f){
-    var dead = !f[1] && f[3];
-    var isActive = f[3] && (view.filter===f[3] || (view.filter==="issues" && f[3]==="abnormal"));
-    return '<div class="card '+(dead?'dead':'')+' '+(isActive?'active':'')+'" '+(f[3]?'data-filter="'+f[3]+'"':'')+(f[4]?' data-abn-only="'+C.esc(f[4])+'"':'')+'>'+
-      '<div class="num" style="color:'+f[2]+'">'+ (typeof f[1]==='number'?C.fmtNum(f[1]):f[1]) +'</div>'+
-      '<div class="lbl">'+C.esc(f[0])+'</div></div>';
-  }).join("");
 
-  $("#dashGrid").querySelectorAll(".card[data-filter]").forEach(function(cardEl){
-    cardEl.addEventListener("click", function(){
-      if (cardEl.classList.contains("dead")) return;
-      view.filter = cardEl.getAttribute("data-filter"); view.mode="nopen"; view.page = 0;
-      var abnOnly = cardEl.getAttribute("data-abn-only");
-      if (abnOnly === "ACTIVE") view.abnormalStatus = {"OPEN":true,"IN PROGRESS":true,"CLOSED":false};
-      else if (abnOnly) view.abnormalStatus = {"OPEN":abnOnly==="OPEN","IN PROGRESS":abnOnly==="IN PROGRESS","CLOSED":abnOnly==="CLOSED"};
-      renderDashboard();
-      renderTable();
-      SessionMgr.broadcastViewState(view);
+  function renderTiles(containerId, fields){
+    var el = $(containerId);
+    el.innerHTML = fields.map(function(f){
+      var dead = !f[1] && f[3];
+      var isActive = f[3] && (view.filter===f[3] || (view.filter==="issues" && f[3]==="abnormal"));
+      return '<div class="card '+(dead?'dead':'')+' '+(isActive?'active':'')+'" '+(f[3]?'data-filter="'+f[3]+'"':'')+(f[4]?' data-abn-only="'+C.esc(f[4])+'"':'')+'>'+
+        '<div class="num" style="color:'+f[2]+'">'+ (typeof f[1]==='number'?C.fmtNum(f[1]):f[1]) +'</div>'+
+        '<div class="lbl">'+C.esc(f[0])+'</div></div>';
+    }).join("");
+    el.querySelectorAll(".card[data-filter]").forEach(function(cardEl){
+      cardEl.addEventListener("click", function(){
+        if (cardEl.classList.contains("dead")) return;
+        view.filter = cardEl.getAttribute("data-filter"); view.mode="nopen"; view.page = 0;
+        var abnOnly = cardEl.getAttribute("data-abn-only");
+        if (abnOnly === "ACTIVE") view.abnormalStatus = {"OPEN":true,"IN PROGRESS":true,"CLOSED":false};
+        else if (abnOnly) view.abnormalStatus = {"OPEN":abnOnly==="OPEN","IN PROGRESS":abnOnly==="IN PROGRESS","CLOSED":abnOnly==="CLOSED"};
+        renderDashboard();
+        renderTable();
+        SessionMgr.broadcastViewState(view);
+      });
     });
-  });
+  }
+  renderTiles("#dashAbnormalGrid", abnormalFields);
+  renderTiles("#dashGrid", otherFields);
 
   $("#monthsRow").innerHTML = (s.byMonth||[]).map(function(mo){
     return '<span class="month-chip">'+C.esc(mo.label)+' <b>'+C.fmtNum(mo.count)+'</b></span>';
@@ -4188,7 +4239,13 @@ function renderTable(){
           var soCellStyle = r.SO_DIFF ? "color:var(--red);font-weight:800;" : "";
           var poCellStyle = r.PO_DIFF ? "color:var(--red);font-weight:800;" : "";
           var ketPlain = r.EXPLANATION + (qtyAdj||cbmAdj ? " [Disesuaikan]" : "");
-          var trClass = r.ROW_STATUS === "ABNORMAL" ? " class='tr-issue'" : "";
+          // Highlight merah dihilangkan kalau SEMUA finding pada row abnormal ini
+          // sudah Closed -- baris tetap tercatat/terhitung sebagai Closed (lihat
+          // rowFindingStatuses/caseFindingCounts), cuma tidak lagi ditandai
+          // sebagai masalah aktif yang butuh perhatian visual.
+          var findingStatusesRow = r.ROW_STATUS === "ABNORMAL" ? rowFindingStatuses(r, rb) : [];
+          var allFindingsClosed = findingStatusesRow.length > 0 && findingStatusesRow.every(function(s){ return s === "CLOSED"; });
+          var trClass = (r.ROW_STATUS === "ABNORMAL" && !allFindingsClosed) ? " class='tr-issue'" : "";
           return "<tr"+trClass+">"+
             "<td><button type='button' class='linkish' data-open='"+C.esc(r.NOPEN)+"' data-brand='"+C.esc(rb)+"'>"+C.esc(r.NOPEN)+"</button></td>"+
             (brandCol?"<td>"+C.esc(rb)+"</td>":"")+
@@ -4499,6 +4556,7 @@ async function exportFilteredXLSX(){
   try {
     var rows = filteredRows();
     var payload = view.mode === "detail" ? {main:[], detail:rows} : {main:rows, detail:[]};
+    RESULT._caseHistory = await fetchCaseHistoryForExport();
     EX.downloadFilteredXLSX(RESULT, payload, view.brand, view.mode, currentFilterLabel(), view.q);
   } catch(err) { gltToast("Gagal membuat file export filter: " + err.message, "err"); }
   btn.disabled = false; btn.innerHTML = orig;
