@@ -3955,7 +3955,7 @@ function renderDashboard(){
   // Grup ringkasan Abnormal -- selalu ditaruh 1 baris tersendiri (lihat CSS
   // .dash-grid-abnormal) supaya tidak terpotong/tercampur oleh grid metrik lain.
   var abnormalFields = [
-    ["Total Abnormal", s.abnormal, s.abnormal?"var(--red)":"var(--ink)", "abnormal"],
+    ["Total Abnormal", s.abnormal, s.abnormal?"var(--red)":"var(--ink)", "abnormal", "ALL"],
     ["Abnormal Aktif (Open+In Progress)", caseCounts.OPEN+caseCounts["IN PROGRESS"], "var(--red)", "abnormal", "ACTIVE"],
     ["Abnormal: Open", caseCounts.OPEN, caseCounts.OPEN?"var(--red)":"var(--ink)", "abnormal", "OPEN"],
     ["Abnormal: In Progress", caseCounts["IN PROGRESS"], caseCounts["IN PROGRESS"]?"var(--amber)":"var(--ink)", "abnormal", "IN PROGRESS"],
@@ -3979,7 +3979,12 @@ function renderDashboard(){
     var el = $(containerId);
     el.innerHTML = fields.map(function(f){
       var dead = !f[1] && f[3];
-      var isActive = f[3] && (view.filter===f[3] || (view.filter==="issues" && f[3]==="abnormal"));
+      // Tile grup Abnormal (f[4] terisi) hanya "active" kalau sub-filter status
+      // SAAT INI persis sama dengan pola tile itu -- supaya cuma 1 tile yang
+      // menyala sesuai pilihan user, bukan semua tile abnormal sekaligus.
+      var isActive = f[4]
+        ? (view.filter==="abnormal" && abnormalStatusEquals(view.abnormalStatus, ABN_PATTERNS[f[4]]))
+        : (f[3] && (view.filter===f[3] || (view.filter==="issues" && f[3]==="abnormal")));
       return '<div class="card '+(dead?'dead':'')+' '+(isActive?'active':'')+'" '+(f[3]?'data-filter="'+f[3]+'"':'')+(f[4]?' data-abn-only="'+C.esc(f[4])+'"':'')+'>'+
         '<div class="num" style="color:'+f[2]+'">'+ (typeof f[1]==='number'?C.fmtNum(f[1]):f[1]) +'</div>'+
         '<div class="lbl">'+C.esc(f[0])+'</div></div>';
@@ -3989,8 +3994,7 @@ function renderDashboard(){
         if (cardEl.classList.contains("dead")) return;
         view.filter = cardEl.getAttribute("data-filter"); view.mode="nopen"; view.page = 0;
         var abnOnly = cardEl.getAttribute("data-abn-only");
-        if (abnOnly === "ACTIVE") view.abnormalStatus = {"OPEN":true,"IN PROGRESS":true,"CLOSED":false};
-        else if (abnOnly) view.abnormalStatus = {"OPEN":abnOnly==="OPEN","IN PROGRESS":abnOnly==="IN PROGRESS","CLOSED":abnOnly==="CLOSED"};
+        if (abnOnly && ABN_PATTERNS[abnOnly]) view.abnormalStatus = Object.assign({}, ABN_PATTERNS[abnOnly]);
         renderDashboard();
         renderTable();
         SessionMgr.broadcastViewState(view);
@@ -4038,6 +4042,21 @@ function currentPack(){
 }
 function rowBrand(r){ return r._brand || view.brand; }
 function has(r, cls){ return r.CLASSES.indexOf(cls) !== -1; }
+
+// Pola exact sub-filter status yang diwakili tiap tile dashboard grup Abnormal --
+// dipakai baik saat tile diklik (menyetel view.abnormalStatus) maupun saat
+// render (menentukan tile mana yang harus menyala "active").
+var ABN_PATTERNS = {
+  ALL: {"OPEN":true, "IN PROGRESS":true, "CLOSED":true},
+  ACTIVE: {"OPEN":true, "IN PROGRESS":true, "CLOSED":false},
+  OPEN: {"OPEN":true, "IN PROGRESS":false, "CLOSED":false},
+  "IN PROGRESS": {"OPEN":false, "IN PROGRESS":true, "CLOSED":false},
+  CLOSED: {"OPEN":false, "IN PROGRESS":false, "CLOSED":true}
+};
+function abnormalStatusEquals(a, b){
+  a = a || {}; b = b || {};
+  return !!a.OPEN===!!b.OPEN && !!a["IN PROGRESS"]===!!b["IN PROGRESS"] && !!a.CLOSED===!!b.CLOSED;
+}
 
 // Status efektif tiap finding/klasifikasi abnormal pada 1 row: kalau sudah ada case
 // dengan case_type yang cocok, pakai status case itu; kalau belum pernah dibuatkan
