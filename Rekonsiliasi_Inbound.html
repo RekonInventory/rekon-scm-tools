@@ -4,42 +4,48 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rekonsiliasi Inbound — SCM ↔ IOR / DRR v33</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="glt-design-system.css">
 <style>
+/* Token lokal dipetakan ke design system bersama (glt-design-system.css).
+   Nama variabel lama dipertahankan supaya seluruh aturan CSS di bawah tetap
+   berlaku tanpa perubahan — hanya nilainya yang diselaraskan.
+   --border, --border-strong, --navy, --navy-soft sengaja tidak didefinisikan
+   ulang di sini karena namanya sama persis dengan token bersama. */
 :root{
-  --bg:#f4f6f9;
-  --panel:#ffffff;
-  --ink:#1a2233;
-  --ink-soft:#5b6478;
-  --ink-faint:#8992a3;
-  --border:#e2e6ee;
-  --border-strong:#cbd2e0;
-  --navy:#141b2d;
-  --navy-soft:#232c44;
-  --accent:#2f6fed;
-  --accent-soft:#e8f0fe;
-  --green:#1a8a4a;
-  --green-bg:#e6f6ec;
-  --amber:#b7791f;
-  --amber-bg:#fdf3e0;
-  --orange:#c2540c;
-  --orange-bg:#fdece0;
-  --red:#c22b2b;
-  --red-bg:#fbe7e7;
-  --purple:#6b3fc2;
-  --purple-bg:#efe7fb;
-  --teal:#0e7d8f;
-  --teal-bg:#e2f4f7;
-  --gray:#5b6478;
-  --gray-bg:#eceef3;
-  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  --radius: 10px;
-  --shadow: 0 1px 2px rgba(20,27,45,0.04), 0 2px 12px rgba(20,27,45,0.05);
+  --bg:var(--background);
+  --panel:var(--surface);
+  --ink:var(--text);
+  --ink-soft:var(--text-secondary);
+  --ink-faint:var(--text-muted);
+  --accent:var(--primary);
+  --accent-soft:var(--primary-soft);
+  --green:var(--success);
+  --green-bg:var(--success-bg);
+  --amber:var(--warning);
+  --amber-bg:var(--warning-bg);
+  --orange:#EA580C;
+  --orange-bg:#FFEDD5;
+  --red:var(--danger);
+  --red-bg:var(--danger-bg);
+  --purple:#7C3AED;
+  --purple-bg:#F5F3FF;
+  --teal:var(--info);
+  --teal-bg:var(--info-bg);
+  --gray:var(--neutral);
+  --gray-bg:var(--neutral-bg);
+  --sans:var(--gs-font-sans);
+  --mono:var(--gs-font-mono);
+  --radius:var(--gs-radius-md);
+  --shadow:var(--gs-shadow-sm);
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{
   background:var(--bg); color:var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family:var(--sans);
   font-size:14px; line-height:1.45;
 }
 .topbar{
@@ -310,38 +316,17 @@ body:not(.authed) .topbar, body:not(.authed) .wrap{display:none;}
 .session-offlinewarn{background:var(--amber-bg);color:#7a5300;border:1px solid #f0d38a;border-radius:8px;padding:8px 14px;font-size:12.5px;margin:-8px 0 16px;}
 .disabled-follow{pointer-events:none;opacity:.5;}
 
-/* ---------- Notifikasi & konfirmasi (pengganti alert/confirm bawaan) ---------- */
-.glt-toast-wrap{position:fixed;top:48px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;max-width:360px;}
-.glt-toast{background:var(--navy);color:#fff;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:10px;align-items:flex-start;animation:gltIn .18s ease-out;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
-.glt-toast.ok{background:var(--green);}
-.glt-toast.err{background:var(--red);}
-.glt-toast.warn{background:var(--amber);}
-.glt-toast .glt-toast-msg{white-space:pre-line;flex:1;}
-.glt-toast .glt-toast-x{cursor:pointer;opacity:.7;font-size:15px;line-height:1;}
-.glt-toast .glt-toast-x:hover{opacity:1;}
-@keyframes gltIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-.glt-confirm-overlay{position:fixed;inset:0;background:rgba(15,20,35,.5);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px;}
-.glt-confirm-box{background:#fff;border-radius:10px;max-width:440px;width:100%;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3);}
-.glt-confirm-box p{white-space:pre-line;font-size:13.5px;color:var(--ink);margin:0 0 18px;line-height:1.5;}
-.glt-confirm-box input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13.5px;margin-bottom:16px;}
-.glt-confirm-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;}
-.glt-confirm-actions button{padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border-strong);background:#fff;}
-.glt-confirm-actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
-.glt-confirm-actions button.danger{background:var(--red);border-color:var(--red);color:#fff;}
-.glt-confirm-actions button:disabled{opacity:.5;cursor:default;}
-
-/* ---------- GLT Rekon Suite: nav lintas-tool ---------- */
+/* Nav lintas-tool, toast, dan dialog konfirmasi sekarang didefinisikan sekali
+   di glt-design-system.css (dulu disalin manual di tiap file). */
 body{padding-top:38px;}
-.glt-nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:#0f1b2d;color:#dfe6f0;display:flex;align-items:center;gap:20px;padding:9px 20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:12.5px;flex-wrap:wrap;}
-.glt-nav-brand{color:#fff;font-weight:800;letter-spacing:.03em;text-decoration:none;font-size:13px;}
-.glt-nav-brand span{font-weight:400;color:#9fb0c9;margin-left:5px;}
-.glt-nav-links{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap;}
-.glt-nav-links a{color:#bcd0e8;text-decoration:none;padding:4px 9px;border-radius:5px;}
-.glt-nav-links a:hover{background:rgba(255,255,255,.08);color:#fff;}
-.glt-nav-links a.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600;}
+
+/* ---------- Penyelarasan ke design system bersama (murni visual) ---------- */
+.topbar{background:var(--navy);}
+.panel{box-shadow:var(--gs-shadow-xs);}
+.step-num{background:var(--primary);}
 </style>
 </head>
-<body>
+<body data-module="inbound">
 
 <div class="glt-nav">
   <a class="glt-nav-brand" href="index.html">GLT <span>Rekon Suite</span></a>

@@ -7,25 +7,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="glt-design-system.css">
 <style>
+/* Token lokal dipetakan ke design system bersama (glt-design-system.css). */
 :root{
-  --ink:#0f1b2d; --ink-2:#1c2c44; --paper:#eef1f6; --card:#ffffff;
-  --line:#dde3ec; --accent:#2f6fed; --muted:#5b6b85; --red:#c22b2b; --red-bg:#fbe7e7;
-  --green:#1a8a4a; --green-bg:#e6f6ec;
-  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
-  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --ink:var(--text); --ink-2:var(--navy-soft); --paper:var(--background); --card:var(--surface);
+  --line:var(--border); --accent:var(--primary); --muted:var(--text-secondary);
+  --red:var(--danger); --red-bg:var(--danger-bg);
+  --green:var(--success); --green-bg:var(--success-bg);
+  --sans:var(--gs-font-sans);
+  --mono:var(--gs-font-mono);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding-top:38px}
 
-.glt-nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:var(--ink);color:#dfe6f0;display:flex;align-items:center;gap:20px;padding:9px 20px;font-size:12.5px;flex-wrap:wrap}
-.glt-nav-brand{color:#fff;font-weight:800;letter-spacing:.03em;text-decoration:none;font-size:13px}
-.glt-nav-brand span{font-weight:400;color:#9fb0c9;margin-left:5px}
-.glt-nav-links{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap}
-.glt-nav-links a{color:#bcd0e8;text-decoration:none;padding:4px 9px;border-radius:5px}
-.glt-nav-links a:hover{background:rgba(255,255,255,.08);color:#fff}
-.glt-nav-links a.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600}
+/* Nav lintas-tool, toast, dan dialog konfirmasi sekarang didefinisikan sekali
+   di glt-design-system.css (dulu disalin manual di tiap file). */
 
 #authgate{position:fixed;inset:38px 0 0 0;background:var(--paper);z-index:900;display:flex;align-items:center;justify-content:center;padding:20px}
 body.authed #authgate{display:none}
@@ -63,26 +61,20 @@ td.actions{white-space:nowrap;display:flex;gap:6px}
 .badge.blocked{background:var(--red-bg);color:var(--red)}
 .notadmin{background:var(--red-bg);color:var(--red);border:1px solid #eec7c7;border-radius:8px;padding:14px 16px;font-size:13px}
 
-.glt-toast-wrap{position:fixed;top:48px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;max-width:360px}
-.glt-toast{background:var(--ink);color:#fff;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:10px;align-items:flex-start;animation:gltIn .18s ease-out}
-.glt-toast.ok{background:var(--green)}
-.glt-toast.err{background:var(--red)}
-.glt-toast .glt-toast-msg{white-space:pre-line;flex:1}
-.glt-toast .glt-toast-x{cursor:pointer;opacity:.7;font-size:15px;line-height:1}
-.glt-toast .glt-toast-x:hover{opacity:1}
-@keyframes gltIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-.glt-confirm-overlay{position:fixed;inset:0;background:rgba(15,20,35,.5);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px}
-.glt-confirm-box{background:#fff;border-radius:10px;max-width:420px;width:100%;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-.glt-confirm-box p{white-space:pre-line;font-size:13.5px;color:var(--ink);margin:0 0 18px;line-height:1.5}
-.glt-confirm-box label{display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin:0 0 5px}
-.glt-confirm-box input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:13.5px;margin-bottom:16px}
-.glt-confirm-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
-.glt-confirm-actions button{padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--line);background:#fff}
-.glt-confirm-actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.glt-confirm-actions button.danger{background:var(--red);border-color:var(--red);color:#fff}
+/* ---------- Penyelarasan ke design system bersama (murni visual) ---------- */
+.panel{border-radius:var(--gs-radius-md);box-shadow:var(--gs-shadow-xs)}
+.authbox{border-radius:var(--gs-radius-lg);box-shadow:var(--gs-shadow-md)}
+.btn.ghost{border-color:var(--border-strong)}
+.btn.ghost:hover{background:var(--surface-muted)}
+.btn.danger{border-color:var(--danger-border)}
+.btn.danger:hover{background:var(--danger-bg)}
+th{font-weight:600}
+tbody tr:hover td{background:var(--surface-muted)}
+.badge{border:1px solid var(--success-border)}
+.badge.blocked{border-color:var(--danger-border)}
 </style>
 </head>
-<body>
+<body data-module="admin">
 
 <div class="glt-nav">
   <a class="glt-nav-brand" href="index.html">GLT <span>Rekon Suite</span></a>

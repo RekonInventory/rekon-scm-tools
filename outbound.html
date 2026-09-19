@@ -6,28 +6,32 @@
 <title>Rekon GLT — Official Reconciliation Tool</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="glt-design-system.css">
 <style>
+/* Token lokal dipetakan ke design system bersama (glt-design-system.css).
+   Nama variabel lama dipertahankan agar seluruh aturan CSS di bawah tetap
+   berlaku tanpa perubahan — hanya nilainya yang diselaraskan. */
 :root{
-  --paper:#EDEFE8;
-  --paper-2:#F6F7F2;
-  --card:#FFFFFF;
-  --ink:#1B2624;
-  --ink-2:#4A5654;
-  --ink-3:#7C8785;
-  --rule:#CDD3C7;
-  --rule-2:#E1E5DA;
-  --indigo:#243B5A;
-  --seal:#1F6F5C;
-  --seal-bg:#E4F0EA;
-  --warn:#9A6B00;
-  --warn-bg:#FBEFD2;
-  --stamp:#A83A2A;
-  --stamp-bg:#F8E3DE;
-  --shadow:0 1px 0 rgba(27,38,36,.06), 0 8px 24px -16px rgba(27,38,36,.35);
-  --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
-  --cond:"IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif;
-  --sans:"IBM Plex Sans", -apple-system, "Segoe UI", Arial, sans-serif;
+  --paper:var(--background);
+  --paper-2:var(--surface-muted);
+  --card:var(--surface);
+  --ink:var(--text);
+  --ink-2:var(--text-secondary);
+  --ink-3:var(--text-muted);
+  --rule:var(--border);
+  --rule-2:var(--border-soft);
+  --indigo:var(--primary);
+  --seal:var(--success);
+  --seal-bg:var(--success-bg);
+  --warn:var(--warning);
+  --warn-bg:var(--warning-bg);
+  --stamp:var(--danger);
+  --stamp-bg:var(--danger-bg);
+  --shadow:var(--gs-shadow-sm);
+  --mono:var(--gs-font-mono);
+  --cond:var(--gs-font-sans);
+  --sans:var(--gs-font-sans);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -530,38 +534,32 @@ body:not(.authed) .wrap{display:none}
 }
 #syncStatus{font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
 
-/* ---------- Notifikasi & konfirmasi (pengganti alert/confirm/prompt bawaan) ---------- */
-.glt-toast-wrap{position:fixed;top:48px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;max-width:360px}
-.glt-toast{background:#243B5A;color:#fff;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:10px;align-items:flex-start;animation:gltIn .18s ease-out}
-.glt-toast.ok{background:#1B7F4B}
-.glt-toast.err{background:#A83A2A}
-.glt-toast.warn{background:#9A6B00}
-.glt-toast .glt-toast-msg{white-space:pre-line;flex:1}
-.glt-toast .glt-toast-x{cursor:pointer;opacity:.7;font-size:15px;line-height:1}
-.glt-toast .glt-toast-x:hover{opacity:1}
-@keyframes gltIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-.glt-confirm-overlay{position:fixed;inset:0;background:rgba(15,20,35,.5);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px}
-.glt-confirm-box{background:#fff;border-radius:10px;max-width:440px;width:100%;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-.glt-confirm-box p{white-space:pre-line;font-size:13.5px;color:var(--ink);margin:0 0 18px;line-height:1.5;font-family:var(--sans)}
-.glt-confirm-box input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--rule);border-radius:6px;font-size:13.5px;margin-bottom:16px;font-family:var(--sans)}
-.glt-confirm-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
-.glt-confirm-actions button{padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--rule);background:#fff;font-family:var(--sans)}
-.glt-confirm-actions button.primary{background:var(--indigo);border-color:var(--indigo);color:#fff}
-.glt-confirm-actions button.danger{background:#A83A2A;border-color:#A83A2A;color:#fff}
-.glt-confirm-actions button:disabled{opacity:.5;cursor:default}
-
-/* ---------- GLT Rekon Suite: nav lintas-tool ---------- */
+/* Nav lintas-tool, toast, dan dialog konfirmasi sekarang didefinisikan sekali
+   di glt-design-system.css (dulu disalin manual di tiap file). */
 body{padding-top:38px}
-.glt-nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:#0f1b2d;color:#dfe6f0;display:flex;align-items:center;gap:20px;padding:9px 20px;font-family:var(--sans);font-size:12.5px;flex-wrap:wrap}
-.glt-nav-brand{color:#fff;font-weight:800;letter-spacing:.03em;text-decoration:none;font-size:13px}
-.glt-nav-brand span{font-weight:400;color:#9fb0c9;margin-left:5px}
-.glt-nav-links{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap}
-.glt-nav-links a{color:#bcd0e8;text-decoration:none;padding:4px 9px;border-radius:5px}
-.glt-nav-links a:hover{background:rgba(255,255,255,.08);color:#fff}
-.glt-nav-links a.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600}
+
+/* ---------- Penyelarasan ke design system bersama (murni visual) ---------- */
+.slot,.drop,.tablewrap,.authbox,.ex,.params,.runhistpanel{border-radius:var(--gs-radius-md)}
+.frow,.btn,.run,.field input,.toolbar input,.toolbar select,.authbox input,.authbox button,
+.drop-kinds span,.legend span.lg,.dfield input,.dfield select,.dfield textarea{border-radius:var(--gs-radius)}
+.pill{border-radius:var(--gs-radius-pill);font-family:var(--sans);font-weight:600}
+.btn{border-color:var(--border-strong)}
+.btn:hover{background:var(--surface-muted);color:var(--text)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
+.run{background:var(--primary);color:#fff}
+.run:hover:not(:disabled){background:var(--primary-dark)}
+.run:disabled{background:var(--surface-muted);color:var(--text-muted)}
+thead th{background:var(--navy);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+thead th:hover,thead th.nosort:hover{background:var(--navy-soft)}
+tbody tr:hover td{background:var(--surface-muted)}
+tbody tr.hl td{background:var(--warning-bg)}
+.tab.on{color:var(--primary);border-bottom-color:var(--primary)}
+.finalbadge.aman{border-color:var(--success-border)}
+.finalbadge.perhatian{border-color:var(--danger-border)}
 </style>
 </head>
-<body>
+<body data-module="outbound">
 <div class="glt-nav">
   <a class="glt-nav-brand" href="index.html">GLT <span>Rekon Suite</span></a>
   <div class="glt-nav-links">

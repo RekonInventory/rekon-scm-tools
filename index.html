@@ -7,26 +7,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="glt-design-system.css">
 <style>
+/* Token lokal dipetakan ke design system bersama (glt-design-system.css). */
 :root{
-  --ink:#0f1b2d; --ink-2:#1c2c44; --paper:#eef1f6; --card:#ffffff;
-  --line:#dde3ec; --accent:#2f6fed; --accent-2:#1f6f5c;
-  --muted:#5b6b85; --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
-  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --ink:var(--text); --ink-2:var(--navy-soft); --paper:var(--background); --card:var(--surface);
+  --line:var(--border); --accent:var(--primary); --accent-2:var(--info);
+  --muted:var(--text-secondary); --sans:var(--gs-font-sans);
+  --mono:var(--gs-font-mono);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding-top:38px}
 
-.glt-nav{background:var(--ink);color:#dfe6f0;display:flex;align-items:center;gap:20px;padding:9px 20px;font-size:12.5px;flex-wrap:wrap}
-.glt-nav-brand{color:#fff;font-weight:800;letter-spacing:.03em;text-decoration:none;font-size:13px}
-.glt-nav-brand span{font-weight:400;color:#9fb0c9;margin-left:5px}
-.glt-nav-links{display:flex;gap:14px;margin-left:auto;flex-wrap:wrap}
-.glt-nav-links a{color:#bcd0e8;text-decoration:none;padding:4px 9px;border-radius:5px}
-.glt-nav-links a:hover{background:rgba(255,255,255,.08);color:#fff}
-.glt-nav-links a.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600}
+/* Nav lintas-tool sekarang didefinisikan sekali di glt-design-system.css. */
 
-.hero{background:linear-gradient(180deg,var(--ink),var(--ink-2));color:#fff;padding:52px 20px 60px;text-align:center}
+.hero{background:linear-gradient(180deg,var(--navy),var(--navy-soft));color:#fff;padding:52px 20px 60px;text-align:center}
 .hero .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8fa3bc;margin-bottom:10px}
 .hero h1{font-size:clamp(26px,4vw,38px);font-weight:700;margin:0 0 10px;letter-spacing:-.01em}
 .hero p{color:#c3cfe0;max-width:560px;margin:0 auto;font-size:14px}
@@ -42,16 +38,16 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .card p{color:var(--muted);font-size:12.8px;margin:0;flex:1}
 .card .meta{font-family:var(--mono);font-size:10.5px;color:#8b98ac;display:flex;gap:6px;flex-wrap:wrap}
 .card .meta span{background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:2px 8px}
-.card a.btn{margin-top:6px;display:inline-flex;align-items:center;justify-content:center;background:var(--ink);color:#fff;text-decoration:none;font-weight:600;font-size:13px;padding:10px 14px;border-radius:7px}
-.card a.btn:hover{background:var(--ink-2)}
-.card.inbound .tag{color:var(--accent)}
-.card.outbound .tag{color:var(--accent-2)}
-.card.inventory .tag{color:#0b6e5f}
+.card a.btn{margin-top:6px;display:inline-flex;align-items:center;justify-content:center;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;font-size:13px;padding:10px 14px;border-radius:var(--gs-radius)}
+.card a.btn:hover{background:var(--primary-dark)}
+.card.outbound .tag{color:#2563EB}
+.card.inbound .tag{color:#0D9488}
+.card.inventory .tag{color:#7C3AED}
 
 .foot{max-width:1080px;margin:0 auto;padding:0 20px 40px;color:var(--muted);font-size:11.5px;text-align:center}
 </style>
 </head>
-<body>
+<body data-module="dashboard">
 
 <div class="glt-nav">
   <a class="glt-nav-brand" href="index.html">GLT <span>Rekon Suite</span></a>
