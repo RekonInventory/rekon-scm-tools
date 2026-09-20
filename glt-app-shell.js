@@ -57,14 +57,6 @@
     return "dashboard";
   }
 
-  function environment() {
-    var host = location.hostname || "";
-    if (host === "localhost" || host === "127.0.0.1" || location.protocol === "file:") {
-      return { key: "local", label: "Lokal" };
-    }
-    return { key: "prod", label: "Produksi" };
-  }
-
   function supaClient() {
     try {
       return (typeof supa !== "undefined" && supa) ? supa : null;
@@ -93,7 +85,6 @@
   function build() {
     var activeId = activeNavId();
     var active = NAV.concat(ADMIN_NAV).filter(function (n) { return n.id === activeId; })[0];
-    var env = environment();
 
     var topbar = document.createElement("header");
     topbar.className = "shell-topbar";
@@ -104,7 +95,6 @@
       '<a class="shell-brand" href="index.html"><span class="shell-brand-mark"></span><b>GLT</b> <span>Rekon Suite</span></a>' +
       '<span class="shell-crumb"><b>' + (active ? active.label : "Dashboard") + "</b></span>" +
       '<div class="shell-topbar-right">' +
-        '<span class="shell-env" data-env="' + env.key + '" title="Lingkungan aplikasi">' + env.label + "</span>" +
         '<span class="shell-sync" id="gsSyncSlot"></span>' +
         '<div class="shell-user">' +
           '<button class="shell-user-btn" id="gsUserBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="gsUserMenu">' +
@@ -157,10 +147,74 @@
     return { topbar: topbar, sidebar: sidebar, scrim: scrim };
   }
 
+  // Halaman menulis stempel waktu absolut ("tersinkron · 16.47.28") ke
+  // #syncStatus setiap kali sinkron terjadi, lalu diam sampai sinkron
+  // berikutnya — dari situ terlihat seperti "berhenti". Shell memindahkan
+  // node itu ke topbar tapi menyembunyikannya, lalu menampilkan versi
+  // relatifnya sendiri ("Tersinkron 2 menit lalu") yang di-refresh berkala,
+  // supaya terlihat hidup. Data & logic sinkron sungguhan tidak disentuh —
+  // ini murni membaca ulang teks yang sudah ditulis halaman.
   function adoptSyncStatus() {
     var sync = document.getElementById("syncStatus");
     var slot = document.getElementById("gsSyncSlot");
-    if (sync && slot) slot.appendChild(sync);
+    if (!sync || !slot) return;
+
+    slot.appendChild(sync);
+    sync.style.display = "none";
+
+    var live = document.createElement("span");
+    live.className = "gs-status";
+    live.id = "gsSyncLive";
+    slot.appendChild(live);
+
+    var lastSyncAt = null;
+    var state = "idle";
+
+    function parseState(text) {
+      if (!text) return null;
+      if (/menyinkronkan/i.test(text)) return "syncing";
+      if (/gagal/i.test(text)) return "error";
+      if (/tersinkron/i.test(text)) return "synced";
+      return null;
+    }
+
+    function relativeLabel(ms) {
+      var secs = Math.max(0, Math.round(ms / 1000));
+      if (secs < 10) return "Tersinkron barusan";
+      if (secs < 60) return "Tersinkron " + secs + " detik lalu";
+      var mins = Math.round(secs / 60);
+      if (mins < 60) return "Tersinkron " + mins + " menit lalu";
+      var hrs = Math.round(mins / 60);
+      return "Tersinkron " + hrs + " jam lalu";
+    }
+
+    function render() {
+      if (state === "syncing") {
+        live.setAttribute("data-state", "syncing");
+        live.textContent = "Menyinkronkan…";
+      } else if (state === "error") {
+        live.setAttribute("data-state", "error");
+        live.textContent = "Gagal sinkron";
+      } else if (state === "synced" && lastSyncAt) {
+        live.setAttribute("data-state", "synced");
+        live.textContent = relativeLabel(Date.now() - lastSyncAt);
+      } else {
+        live.removeAttribute("data-state");
+        live.textContent = "";
+      }
+    }
+
+    function pull() {
+      var next = parseState(sync.textContent);
+      if (!next) return;
+      state = next;
+      if (state === "synced") lastSyncAt = Date.now();
+      render();
+    }
+
+    new MutationObserver(pull).observe(sync, { childList: true, characterData: true, subtree: true });
+    pull();
+    setInterval(render, 30000);
   }
 
   function setupAuthGate() {
@@ -270,6 +324,8 @@
     });
   }
 
+  var authedUser = null; // dipakai setupIdleLogout() untuk tahu kapan perlu memantau idle
+
   function fillIdentity() {
     var client = supaClient();
     var nameEl = document.getElementById("gsUserName");
@@ -279,6 +335,7 @@
     var adminGroup = document.getElementById("gsAdminGroup");
 
     function render(user) {
+      authedUser = user;
       var name = displayNameFrom(user);
       if (!user) {
         if (nameEl) nameEl.textContent = "Belum masuk";
@@ -305,6 +362,71 @@
     });
   }
 
+  // Notifikasi ringan milik shell sendiri (dipakai untuk auto-logout), dibuat
+  // dari class .glt-toast-wrap/.glt-toast yang sudah ada di
+  // glt-design-system.css — bukan duplikat gltToast() milik tiap halaman,
+  // karena index.html/admin.html tidak selalu punya fungsi itu.
+  function shellToast(message) {
+    var wrap = document.getElementById("gsToastWrap");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.id = "gsToastWrap";
+      wrap.className = "glt-toast-wrap";
+      document.body.appendChild(wrap);
+    }
+    var el = document.createElement("div");
+    el.className = "glt-toast warn";
+    var msg = document.createElement("div");
+    msg.className = "glt-toast-msg";
+    msg.textContent = message;
+    el.appendChild(msg);
+    wrap.appendChild(el);
+  }
+
+  // Auto-logout setelah tidak ada aktivitas selama IDLE_LIMIT_MS. Aktivitas
+  // dicatat lintas tab lewat localStorage supaya tab lain yang masih dipakai
+  // aktif tidak ikut ter-logout gara-gara satu tab dibiarkan diam.
+  var IDLE_LIMIT_MS = 2 * 60 * 60 * 1000; // 2 jam
+  var IDLE_CHECK_MS = 30 * 1000;
+  var IDLE_STORAGE_KEY = "glt-last-activity";
+  var IDLE_EVENTS = ["mousemove", "mousedown", "keydown", "wheel", "touchstart", "scroll"];
+
+  function setupIdleLogout() {
+    var lastMark = 0; // throttle penulisan localStorage, bukan sumber kebenaran waktunya
+
+    function markActivity() {
+      var now = Date.now();
+      if (now - lastMark < 5000) return;
+      lastMark = now;
+      try { localStorage.setItem(IDLE_STORAGE_KEY, String(now)); } catch (e) { /* mode privat */ }
+    }
+    function readLastActivity() {
+      try {
+        var v = parseInt(localStorage.getItem(IDLE_STORAGE_KEY), 10);
+        return isNaN(v) ? Date.now() : v;
+      } catch (e) { return Date.now(); }
+    }
+
+    markActivity();
+    IDLE_EVENTS.forEach(function (evt) {
+      document.addEventListener(evt, markActivity, { passive: true });
+    });
+
+    var loggedOut = false;
+    setInterval(function () {
+      if (!authedUser || loggedOut) return;
+      var idleFor = Date.now() - readLastActivity();
+      if (idleFor < IDLE_LIMIT_MS) return;
+      loggedOut = true;
+      var client = supaClient();
+      if (!client) return;
+      client.auth.signOut().then(function () {
+        shellToast("Sesi berakhir karena tidak ada aktivitas selama 2 jam. Silakan masuk kembali.");
+        setTimeout(function () { location.reload(); }, 1200);
+      });
+    }, IDLE_CHECK_MS);
+  }
+
   function init() {
     if (document.querySelector(".shell-topbar")) return;
 
@@ -319,6 +441,7 @@
     setupDrawer();
     setupUserMenu();
     fillIdentity();
+    setupIdleLogout();
   }
 
   if (document.readyState === "loading") {
