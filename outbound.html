@@ -539,25 +539,219 @@ body:not(.authed) .wrap{display:none}
    di glt-design-system.css (dulu disalin manual di tiap file). */
 body{padding-top:38px}
 
-/* ---------- Penyelarasan ke design system bersama (murni visual) ---------- */
-.slot,.drop,.tablewrap,.authbox,.ex,.params,.runhistpanel{border-radius:var(--gs-radius-md)}
-.frow,.btn,.run,.field input,.toolbar input,.toolbar select,.authbox input,.authbox button,
-.drop-kinds span,.legend span.lg,.dfield input,.dfield select,.dfield textarea{border-radius:var(--gs-radius)}
-.pill{border-radius:var(--gs-radius-pill);font-family:var(--sans);font-weight:600}
-.btn{border-color:var(--border-strong)}
+/* ==========================================================================
+   LAPISAN POLISH VISUAL — hanya presentasi, tidak menyentuh logic apa pun.
+   Ditulis sebagai override di akhir agar aturan lama di atas tetap utuh dan
+   perubahan visual mudah ditelusuri/di-rollback.
+   ========================================================================== */
+
+/* --- Wadah & header halaman --- */
+.wrap{max-width:1280px;padding:0 24px 80px}
+.mast{padding:24px 0 20px;border-bottom:1px solid var(--border);text-align:left}
+.mast h1{font-family:var(--sans);font-weight:600;font-size:26px;letter-spacing:-.015em;max-width:none;margin:0}
+.page-desc{margin:6px 0 0;font-size:13.5px;color:var(--text-secondary);max-width:74ch}
+.sec{margin-top:32px}
+.sec-head{margin-bottom:12px}
+.sec-head h2{font-family:var(--sans);font-weight:600;font-size:17px;letter-spacing:-.005em}
+.sec-head .note,.runhint{font-size:12.5px;color:var(--text-muted)}
+
+/* --- Label mikro: sans, bukan mono uppercase renggang --- */
+.slot-key,.card-key,.off-grid span,.panel-head .k,.periods div span,.field label,.authbox label{
+  font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.01em;
+  text-transform:none;color:var(--text-muted)
+}
+.authbox p.sub{font-family:var(--sans);font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--text-muted);margin:0 0 18px}
+.slot-name,.card h3,.drop-title,.panel-head h3,.vblock b,.empty b{font-family:var(--sans);letter-spacing:-.005em}
+
+/* --- Kartu, panel, kotak --- */
+.card,.panel,.params,.runhistpanel,.ex,.slot,.periods div{border-radius:var(--gs-radius-lg);border-color:var(--border)}
+.card,.panel{box-shadow:var(--gs-shadow-xs)}
+.card{padding:18px 20px}
+.panel{padding:18px 20px}
+.params{background:var(--surface);padding:18px 20px}
+.tablewrap{border-radius:var(--gs-radius-lg);box-shadow:var(--gs-shadow-xs)}
+.slot{padding:14px 16px;transition:border-color .15s ease-out,box-shadow .15s ease-out,background .15s ease-out}
+.slot:hover{border-color:var(--border-strong);box-shadow:var(--gs-shadow-sm)}
+.slot.over{background:var(--primary-soft);border-color:var(--primary)}
+.slot.filled{border-color:var(--border)}
+.slot.filled::after{border-radius:var(--gs-radius-lg) 0 0 var(--gs-radius-lg)}
+.slot-files b{font-family:var(--mono);color:var(--success)}
+
+/* --- Area unggah --- */
+.drop{
+  border:1.5px dashed var(--border-strong);border-radius:var(--gs-radius-lg);
+  padding:36px 24px;background:var(--surface);
+  transition:border-color .15s ease-out,background .15s ease-out
+}
+.drop:hover,.drop.over{border-color:var(--primary);background:var(--primary-soft)}
+.drop-title{font-weight:600;font-size:16px}
+.drop-sub{font-size:13px;color:var(--text-secondary);margin-top:5px}
+.drop-kinds span{
+  font-family:var(--sans);font-size:11.5px;border-radius:var(--gs-radius-pill);
+  background:var(--surface-muted);border-color:var(--border);color:var(--text-secondary);padding:3px 10px
+}
+.frow{
+  border-radius:var(--gs-radius);border-color:var(--border);border-left-width:3px;
+  padding:10px 12px;transition:border-color .15s ease-out
+}
+.frow .nm{font-size:12.5px}
+.frow .tag{font-family:var(--sans);font-size:11px;letter-spacing:.01em;text-transform:none;color:var(--text-muted)}
+.frow .x{border-radius:var(--gs-radius-sm);transition:color .12s ease-out,background .12s ease-out}
+.frow .x:hover{background:var(--danger-bg)}
+
+/* --- Tombol --- */
+.btn{
+  font-family:var(--sans);font-weight:600;font-size:13.5px;border-radius:var(--gs-radius-md);
+  border:1px solid var(--border-strong);padding:9px 15px;line-height:1.1;
+  transition:background .15s ease-out,border-color .15s ease-out,color .15s ease-out
+}
 .btn:hover{background:var(--surface-muted);color:var(--text)}
+.btn:active{background:var(--border-soft)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
 .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
 .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
-.run{background:var(--primary);color:#fff}
+.btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.run{
+  font-family:var(--sans);font-weight:600;font-size:14px;letter-spacing:0;
+  background:var(--primary);color:#fff;border-radius:var(--gs-radius-md);padding:11px 22px;
+  transition:background .15s ease-out
+}
 .run:hover:not(:disabled){background:var(--primary-dark)}
-.run:disabled{background:var(--surface-muted);color:var(--text-muted)}
-thead th{background:var(--navy);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
-thead th:hover,thead th.nosort:hover{background:var(--navy-soft)}
-tbody tr:hover td{background:var(--surface-muted)}
-tbody tr.hl td{background:var(--warning-bg)}
-.tab.on{color:var(--primary);border-bottom-color:var(--primary)}
+.run:disabled{background:var(--surface-muted);color:var(--text-disabled,#94A3B8)}
+.prog-bar{height:4px;border-radius:var(--gs-radius-pill);background:var(--surface-muted)}
+.prog-bar i{background:var(--primary);border-radius:inherit}
+.prog-txt{font-size:12px;color:var(--text-secondary)}
+
+/* --- Form --- */
+.field input,.toolbar input,.toolbar select,.authbox input,.dfield input,.dfield select,.dfield textarea{
+  border-radius:var(--gs-radius-md);border:1px solid var(--border-strong);padding:9px 11px;
+  font-size:13.5px;background:var(--surface);
+  transition:border-color .15s ease-out,box-shadow .15s ease-out
+}
+.field input:focus,.toolbar input:focus,.toolbar select:focus,.authbox input:focus,
+.dfield input:focus,.dfield select:focus,.dfield textarea:focus{
+  outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)
+}
+.authbox{padding:28px 26px;box-shadow:var(--gs-shadow-md);border-radius:var(--gs-radius-lg)}
+.authbox h2{font-family:var(--sans);font-weight:600;font-size:19px}
+.authbox button{border-radius:var(--gs-radius-md);background:var(--primary);border-color:var(--primary);padding:11px}
+.authbox button:hover:not(:disabled){background:var(--primary-dark)}
+
+/* --- Bar status run (lapisan "official") --- */
+.official{
+  border-radius:var(--gs-radius-lg);border-top:1px solid var(--border);border-color:var(--border);
+  margin-top:16px;padding:12px 18px;gap:20px;box-shadow:var(--gs-shadow-xs)
+}
+.off-brand{display:none}
+.off-grid b{font-size:12.5px}
+.off-grid b.link{border-bottom-color:var(--border-strong)}
+.off-state{
+  font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.01em;
+  border-radius:var(--gs-radius-pill);padding:4px 11px;display:inline-flex;align-items:center;gap:6px
+}
+.off-state::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.off-state[data-s="ready"]{background:var(--surface-muted);color:var(--text-secondary);border-color:var(--border)}
+.off-state[data-s="processing"]{background:var(--primary-soft);color:var(--primary-dark);border-color:var(--primary-border)}
+.off-state[data-s="completed"]{background:var(--success-bg);color:#15803D;border-color:var(--success-border)}
+.off-state[data-s="warning"]{background:var(--warning-bg);color:#B45309;border-color:var(--warning-border)}
+.off-state[data-s="blocked"]{background:var(--danger-bg);color:#B91C1C;border-color:var(--danger-border)}
+
+/* --- KPI hasil --- */
+.score b{font-family:var(--sans);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.score .of{font-size:13px;color:var(--text-muted)}
+.score .pct{font-size:12.5px;font-weight:600}
+.bar{height:8px;border-radius:var(--gs-radius-pill);border-color:var(--border)}
+.bar i.match{background:#34A0A4}
+.legend{font-size:12px;color:var(--text-secondary)}
+.legend span.lg{border-radius:var(--gs-radius);transition:background .12s ease-out,border-color .12s ease-out}
+.legend span.lg:hover{background:var(--surface-muted);border-color:var(--border)}
+.legend span.lg.aktif{background:var(--primary-soft);border-color:var(--primary-border);color:var(--primary-dark)}
+.legend span.lg.aktif b{color:var(--primary-dark)}
+.legend em{border-radius:2px}
+.totals div b{font-family:var(--mono);font-size:16px;font-weight:600}
+.totals div.klik{border-bottom-color:var(--border-strong)}
+.finalbadge.on{border-radius:var(--gs-radius-lg);padding:14px 18px}
+.finalbadge .fb-val{font-family:var(--sans);font-size:22px;font-weight:600}
+.finalbadge .fb-label{font-family:var(--sans);font-size:11.5px;letter-spacing:.01em;text-transform:none}
 .finalbadge.aman{border-color:var(--success-border)}
 .finalbadge.perhatian{border-color:var(--danger-border)}
+
+/* --- Kartu eksepsi (KPI kecil) --- */
+.ex{
+  padding:13px 15px;border-left-width:3px;
+  transition:border-color .15s ease-out,box-shadow .15s ease-out
+}
+.ex:hover{border-color:var(--border-strong);box-shadow:var(--gs-shadow-sm)}
+.ex .lbl{font-size:12px;color:var(--text-muted)}
+.ex .val{font-family:var(--mono);font-weight:600}
+
+/* --- Tab --- */
+.tabs{gap:4px;border-bottom-color:var(--border)}
+.tab{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--text-muted);transition:color .15s ease-out}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--primary);border-bottom-color:var(--primary)}
+.tab .n{font-family:var(--mono);color:var(--text-muted)}
+.tab.on .n{color:var(--primary)}
+
+/* --- Toolbar tabel sebagai satu unit --- */
+.toolbar{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--gs-radius-lg);
+  padding:10px 12px;gap:8px;margin-bottom:12px
+}
+/* Selector disamakan dengan aturan lama (.toolbar input[type=search]) supaya
+   specificity-nya menang — kalau hanya ".toolbar input" aturan lama tetap dipakai. */
+.toolbar input[type=search],.toolbar input{
+  min-width:260px;border-radius:var(--gs-radius-md);border:1px solid var(--border-strong);
+  padding:9px 11px 9px 34px;font-size:13.5px;
+  background-color:var(--surface);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:11px 50%;background-size:15px
+}
+.toolbar input[type=search]:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.count{font-family:var(--mono);font-size:12px;color:var(--text-muted)}
+
+/* --- Tabel --- */
+table{font-size:13px}
+thead th{
+  background:var(--surface-muted);color:var(--text-secondary);
+  font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  padding:11px 12px;border-right:0;border-bottom:1px solid var(--border-strong);
+  transition:background .12s ease-out,color .12s ease-out
+}
+thead th:hover,thead th.nosort:hover{background:var(--border);color:var(--text)}
+thead th .ar{opacity:.55;color:var(--text-muted)}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--border-soft)}
+tbody tr:hover td{background:var(--surface-muted)}
+tbody tr.hl td{background:var(--warning-bg)}
+td.wrap{color:var(--text-secondary)}
+td.edit{background:#FFFDF5}
+td.edit:hover{background:var(--warning-bg)}
+td.adj{background:var(--primary-soft)}
+td.adj:hover{background:#DBEAFE}
+.pill{
+  font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.02em;
+  border-radius:var(--gs-radius-pill);padding:3px 9px;display:inline-flex;align-items:center;gap:5px
+}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.pill.ok{background:var(--success-bg);color:#15803D}
+.pill.warn{background:var(--warning-bg);color:#B45309}
+.pill.bad{background:var(--danger-bg);color:#B91C1C}
+.pill.batal{background:var(--surface-muted);color:var(--text-secondary)}
+.pill.match-adj{background:var(--primary-soft);color:var(--primary-dark)}
+.notecount{font-family:var(--mono);font-size:11.5px;color:var(--text-muted)}
+.tablewrap::-webkit-scrollbar{width:10px;height:10px}
+.tablewrap::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:var(--gs-radius-pill);border:3px solid var(--surface)}
+.tablewrap::-webkit-scrollbar-thumb:hover{background:var(--text-disabled,#94A3B8)}
+
+/* --- State kosong, peringatan, validasi --- */
+.empty{padding:56px 24px;color:var(--text-muted)}
+.empty b{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px}
+.more{padding:16px}
+.alert,.vblock{border-radius:var(--gs-radius-lg);border-color:var(--danger-border);padding:13px 16px}
+.vblock.warn{border-color:var(--warning-border)}
+.vblock pre{border-radius:var(--gs-radius);font-size:11.5px}
+.periods div{background:var(--surface);border-color:var(--border);padding:9px 12px}
+.periods div.miss{border-color:var(--warning-border);background:var(--warning-bg)}
 </style>
 </head>
 <body data-module="outbound">
@@ -588,7 +782,8 @@ tbody tr.hl td{background:var(--warning-bg)}
 <div class="wrap">
 
 <header class="mast">
-  <h1>Rekonsiliasi data P3BET dengan SCM &amp; Laporan Adidas / Nike</h1>
+  <h1>Outbound</h1>
+  <p class="page-desc">Rekonsiliasi data P3BET (CEISA) terhadap laporan Adidas/Nike dan SCM Outbound — dua arah, dengan riwayat run, catatan, dan penyesuaian tersimpan.</p>
   <div class="acct" id="acctBar">
     <span id="syncStatus"></span>
     <span id="acctEmail"></span>

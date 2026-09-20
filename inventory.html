@@ -157,14 +157,7 @@ body:not(.authed) .band, body:not(.authed) .wrap{display:none}
    di glt-design-system.css (dulu disalin manual di tiap file). */
 body{padding-top:38px}
 
-/* ---------- Penyelarasan ke design system bersama (murni visual) ---------- */
-.drop:hover,.drop.hot{background:var(--primary-soft)}
-.btn-main:disabled{background:var(--surface-muted);color:var(--text-muted)}
-.btn-ghost{border-color:var(--border-strong)}
-.btn-ghost:hover{background:var(--surface-muted);border-color:var(--border-strong)}
-.t-teal{background:var(--primary-soft);color:var(--primary-dark)}
-#hrow th:hover{background:var(--navy-soft)}
-.authbox{box-shadow:var(--gs-shadow-md);border-radius:var(--gs-radius-lg)}
+/* (blok polish visual dipindah ke akhir <style>, lihat "LAPISAN POLISH VISUAL") */
 
 /* ---------- Ledger strip (signature) ---------- */
 .ledger{background:var(--card);border:1px solid var(--line);border-radius:8px;
@@ -263,6 +256,140 @@ td.nowrap{white-space:nowrap}
 .note{background:#fff;border-left:3px solid var(--teal);border-radius:0 6px 6px 0;
   padding:11px 14px;font-size:12.5px;color:var(--ink-soft);margin-top:14px}
 .note b{color:var(--ink)}
+
+/* ==========================================================================
+   LAPISAN POLISH VISUAL — hanya presentasi, tidak menyentuh logic apa pun.
+   Catatan specificity: beberapa aturan lama memakai ID (#hrow th) atau
+   attribute selector (input[type=text]), jadi selector override di bawah
+   sengaja dibuat sama persis supaya benar-benar menang.
+   ========================================================================== */
+
+/* --- Header halaman (dulu band gelap, sekarang page header terang) --- */
+.band{background:transparent;color:var(--text);border-bottom:1px solid var(--border);margin-bottom:24px}
+.band-in{padding:24px 20px 20px;align-items:flex-start}
+.band h1{font-size:26px;font-weight:600;letter-spacing:-.015em}
+.band .eyebrow{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--text-muted);margin-bottom:6px}
+.band .sub{font-size:13.5px;color:var(--text-secondary);margin-top:6px;max-width:74ch}
+.band .meta{font-family:var(--sans);font-size:12px;color:var(--text-muted);line-height:1.7}
+.band .meta b{font-family:var(--mono);color:var(--text);font-weight:600}
+
+/* --- Langkah / section --- */
+.step{margin-bottom:28px}
+.step-no{
+  font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.02em;
+  color:var(--primary-dark);background:var(--primary-soft);border-color:var(--primary-border);
+  border-radius:var(--gs-radius-pill);padding:2px 9px
+}
+.step-title{font-size:16px;font-weight:600}
+.step-hint{font-size:12.5px;color:var(--text-muted)}
+
+/* --- Area unggah & kartu berkas --- */
+.drop{
+  border:1.5px dashed var(--border-strong);border-radius:var(--gs-radius-lg);padding:22px;
+  transition:border-color .15s ease-out,background .15s ease-out
+}
+.drop:hover,.drop.hot{border-color:var(--primary);background:var(--primary-soft)}
+.drop-label{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.01em;text-transform:none;color:var(--text-muted);margin-bottom:6px}
+.drop-title{font-size:14.5px}
+.drop-desc{font-size:12.5px;color:var(--text-secondary)}
+.fcard{border-radius:var(--gs-radius-md);border-color:var(--border);border-left:3px solid var(--success);padding:11px 13px}
+.fmeta{color:var(--text-muted)}
+.x{border-radius:var(--gs-radius-sm);transition:background .12s ease-out,color .12s ease-out}
+.warnline{border-radius:var(--gs-radius);border:1px solid var(--warning-border);color:#B45309;padding:8px 11px}
+.mfield label{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.01em;text-transform:none;color:var(--text-muted)}
+
+/* --- Form --- */
+select,input[type=text],input[type=number]{
+  font-size:13px;padding:9px 11px;border:1px solid var(--border-strong);
+  border-radius:var(--gs-radius-md);background:var(--surface);
+  transition:border-color .15s ease-out,box-shadow .15s ease-out
+}
+select:focus,input:focus{
+  outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)
+}
+.refbar label{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.01em;text-transform:none;color:var(--text-muted)}
+.refbar input[type=date]{font-size:12.5px;padding:8px 10px}
+.noteinput:hover{border-color:var(--border-strong)}
+.noteinput:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+
+/* --- Tombol --- */
+.btn{padding:9px 16px;border-radius:var(--gs-radius-md);transition:background .15s ease-out,border-color .15s ease-out,color .15s ease-out}
+.btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.btn-main:disabled{background:var(--surface-muted);color:var(--text-muted)}
+.btn-ghost{border-color:var(--border-strong);color:var(--text)}
+.btn-ghost:hover{background:var(--surface-muted);border-color:var(--border-strong)}
+.btn-sm{padding:7px 12px}
+
+/* --- Ledger & legenda --- */
+.ledger{border-radius:var(--gs-radius-lg);border-color:var(--border);box-shadow:var(--gs-shadow-xs);padding:18px 20px}
+.ledger-h .t{font-size:15px}
+.ledger-h .n{font-size:12px;color:var(--text-muted)}
+.strip{height:28px;border-radius:var(--gs-radius);border-color:var(--border);background:var(--surface-muted)}
+.lg{border-radius:var(--gs-radius-pill);border-color:var(--border);padding:6px 12px;transition:background .12s ease-out,border-color .12s ease-out}
+.lg:hover{border-color:var(--border-strong);background:var(--surface-muted)}
+.lg .dot{border-radius:50%}
+.lg .lb{font-size:12px;color:var(--text-secondary)}
+.lg .ct{font-size:12px;color:var(--text)}
+.refnote{font-size:12.5px;color:var(--text-muted)}
+
+/* --- Toolbar tabel sebagai satu unit --- */
+.tabbar{border-bottom-color:var(--border)}
+.tabbtn{font-size:13.5px}
+.tools{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--gs-radius-lg);
+  padding:10px 12px;gap:8px;margin-bottom:12px
+}
+.tools input[type=text]{
+  max-width:300px;padding-left:34px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:11px 50%;background-size:15px
+}
+
+/* --- Tabel --- */
+.tbl-wrap{border-radius:var(--gs-radius-lg);border-color:var(--border);box-shadow:var(--gs-shadow-xs)}
+table{font-size:13px}
+.hrow th{
+  background:var(--surface-muted);color:var(--text-secondary);height:auto;
+  font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.04em;
+  padding:11px 12px;border-bottom:1px solid var(--border-strong)
+}
+#hrow th:hover{background:var(--border);color:var(--text)}
+#hrow th.sorted{background:var(--primary-soft);color:var(--primary-dark)}
+.frow th{top:40px;border-bottom-color:var(--border)}
+.frow input,.frow select{font-size:12px;padding:6px 8px;border-radius:var(--gs-radius);border-color:var(--border)}
+.frow input:focus,.frow select:focus{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft)}
+tbody td{padding:10px 12px;border-bottom-color:var(--border-soft)}
+tbody tr:hover{background:var(--surface-muted)}
+.tbl-wrap::-webkit-scrollbar{width:10px;height:10px}
+.tbl-wrap::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:var(--gs-radius-pill);border:3px solid var(--surface)}
+.tbl-wrap::-webkit-scrollbar-thumb:hover{background:#94A3B8}
+
+/* --- Badge status --- */
+.tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--gs-radius-pill)}
+.t-ok,.t-warn,.t-err{display:inline-flex;align-items:center;gap:5px}
+.t-ok::before,.t-warn::before,.t-err::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.t-ok{background:var(--success-bg);color:#15803D}
+.t-warn{background:var(--warning-bg);color:#B45309}
+.t-err{background:var(--danger-bg);color:#B91C1C}
+.t-teal{background:var(--primary-soft);color:var(--primary-dark)}
+.t-blue{background:var(--info-bg);color:#0E7490}
+.t-pur{background:var(--purple-bg);color:var(--purple)}
+.t-src-inv,.t-cat-adidas{background:var(--surface-muted);color:var(--text-secondary)}
+.t-src-scm{background:var(--info-bg);color:#0E7490}
+.t-src-inb{background:var(--success-bg);color:#15803D}
+.t-src-out{background:var(--purple-bg);color:var(--purple)}
+.t-cat-nike{background:#FFEDD5;color:#C2410C}
+.muted{color:var(--text-muted)}
+
+/* --- State & panel pendukung --- */
+.empty{padding:56px 24px;color:var(--text-muted)}
+.empty b{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px}
+.foot{font-size:12.5px;color:var(--text-muted)}
+.note{border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:var(--gs-radius-md);padding:12px 15px;color:var(--text-secondary)}
+.runhistpanel{border-radius:var(--gs-radius-lg);border-color:var(--border);box-shadow:var(--gs-shadow-xs);padding:18px 20px}
+.runrow{border-bottom-color:var(--border-soft)}
+.runrow .rid{color:var(--text-muted)}
+.authbox{box-shadow:var(--gs-shadow-md);border-radius:var(--gs-radius-lg);padding:28px 26px}
 </style>
 </head>
 <body data-module="inventory">

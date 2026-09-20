@@ -23,29 +23,40 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 
 /* Nav lintas-tool sekarang didefinisikan sekali di glt-design-system.css. */
 
-.hero{background:linear-gradient(180deg,var(--navy),var(--navy-soft));color:#fff;padding:52px 20px 60px;text-align:center}
-.hero .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8fa3bc;margin-bottom:10px}
-.hero h1{font-size:clamp(26px,4vw,38px);font-weight:700;margin:0 0 10px;letter-spacing:-.01em}
-.hero p{color:#c3cfe0;max-width:560px;margin:0 auto;font-size:14px}
-.acctline{margin-top:22px;font-family:var(--mono);font-size:12px;color:#9fb0c9}
-.acctline b{color:#fff}
-.acctline a{color:#8fc4ff;cursor:pointer}
+.acctline{display:none}
 
-.wrap{max-width:1080px;margin:-32px auto 60px;padding:0 20px}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 22px;box-shadow:0 1px 2px rgba(15,27,45,.04),0 12px 30px -18px rgba(15,27,45,.25);display:flex;flex-direction:column;gap:10px}
-.card .tag{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
-.card h2{font-size:17px;margin:0;font-weight:700}
-.card p{color:var(--muted);font-size:12.8px;margin:0;flex:1}
-.card .meta{font-family:var(--mono);font-size:10.5px;color:#8b98ac;display:flex;gap:6px;flex-wrap:wrap}
-.card .meta span{background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:2px 8px}
-.card a.btn{margin-top:6px;display:inline-flex;align-items:center;justify-content:center;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;font-size:13px;padding:10px 14px;border-radius:var(--gs-radius)}
+.wrap{max-width:1180px;margin:0 auto 64px;padding:0 24px}
+.page-head{padding:28px 0 22px;border-bottom:1px solid var(--border);margin-bottom:24px}
+.page-head h1{font-size:26px;font-weight:600;letter-spacing:-.015em;margin:0}
+.page-desc{margin:6px 0 0;font-size:13.5px;color:var(--text-secondary);max-width:74ch}
+.section-label{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--gs-radius-lg);
+  padding:20px;box-shadow:var(--gs-shadow-xs);display:flex;flex-direction:column;gap:9px;
+  transition:border-color .15s ease-out,box-shadow .15s ease-out
+}
+.card:hover{border-color:var(--border-strong);box-shadow:var(--gs-shadow-sm)}
+.card .tag{
+  font-family:var(--sans);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  font-weight:600;color:var(--primary);width:fit-content
+}
+.card h2{font-size:16px;margin:0;font-weight:600;letter-spacing:-.01em}
+.card p{color:var(--text-secondary);font-size:13px;margin:0;flex:1;line-height:1.55}
+.card .meta{font-family:var(--sans);font-size:11.5px;color:var(--text-muted);display:flex;gap:6px;flex-wrap:wrap}
+.card .meta span{background:var(--surface-muted);border:1px solid var(--border);border-radius:var(--gs-radius-pill);padding:3px 9px}
+.card a.btn{
+  margin-top:8px;display:inline-flex;align-items:center;justify-content:center;
+  background:var(--primary);color:#fff;text-decoration:none;font-weight:600;font-size:13.5px;
+  padding:10px 14px;border-radius:var(--gs-radius-md);transition:background .15s ease-out
+}
 .card a.btn:hover{background:var(--primary-dark)}
+.card a.btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .card.outbound .tag{color:#2563EB}
 .card.inbound .tag{color:#0D9488}
 .card.inventory .tag{color:#7C3AED}
 
-.foot{max-width:1080px;margin:0 auto;padding:0 20px 40px;color:var(--muted);font-size:11.5px;text-align:center}
+.foot{max-width:1180px;margin:0 auto;padding:0 24px 40px;color:var(--text-muted);font-size:12px}
 </style>
 </head>
 <body data-module="dashboard">
@@ -61,14 +72,14 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
   </div>
 </div>
 
-<div class="hero">
-  <div class="eyebrow">SCM Reconciliation</div>
-  <h1>GLT Rekon Suite</h1>
-  <p>Satu pintu masuk untuk tiga alat rekonsiliasi SCM — pilih salah satu di bawah untuk mulai. Semua tool berbagi satu akun login.</p>
-  <div class="acctline" id="acctLine">Memeriksa status login…</div>
-</div>
-
 <div class="wrap">
+  <header class="page-head">
+    <h1>Dashboard</h1>
+    <p class="page-desc">Pilih modul rekonsiliasi untuk mulai bekerja. Seluruh modul memakai satu akun yang sama, dan hasil serta catatannya disimpan ke server bersama.</p>
+    <div class="acctline" id="acctLine">Memeriksa status login…</div>
+  </header>
+
+  <div class="section-label">Modul rekonsiliasi</div>
   <div class="cards">
     <div class="card outbound">
       <div class="tag">Outbound</div>

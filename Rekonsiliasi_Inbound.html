@@ -321,10 +321,237 @@ body:not(.authed) .topbar, body:not(.authed) .wrap{display:none;}
    di glt-design-system.css (dulu disalin manual di tiap file). */
 body{padding-top:38px;}
 
-/* ---------- Penyelarasan ke design system bersama (murni visual) ---------- */
-.topbar{background:var(--navy);}
-.panel{box-shadow:var(--gs-shadow-xs);}
-.step-num{background:var(--primary);}
+/* ==========================================================================
+   LAPISAN POLISH VISUAL — hanya presentasi, tidak menyentuh logic apa pun.
+   Catatan specificity: aturan lama memakai attribute selector pada
+   .filter-bar input[type=text] dan .adj-row input[type=text], jadi selector
+   override di bawah dibuat sama persis supaya benar-benar menang.
+   ========================================================================== */
+
+/* --- Header halaman (dulu bar navy, sekarang page header terang) --- */
+.topbar{
+  background:transparent;color:var(--text);padding:24px 24px 20px;
+  border-bottom:1px solid var(--border);max-width:1440px;margin:0 auto;align-items:flex-start;
+}
+.topbar h1{font-size:26px;font-weight:600;letter-spacing:-.015em;color:var(--text);}
+.topbar .flow{color:var(--text-secondary);font-family:var(--sans);font-size:13.5px;}
+.wrap{padding-top:20px;}
+
+/* --- Panel & judul --- */
+.panel{border-radius:var(--gs-radius-lg);box-shadow:var(--gs-shadow-xs);padding:20px 22px;}
+.panel-title h2{font-size:15px;font-weight:600;letter-spacing:-.005em;}
+.panel-sub{font-size:12.5px;color:var(--text-muted);}
+.step-num{background:var(--primary);font-weight:600;}
+.field label{font-size:11.5px;font-weight:600;text-transform:none;letter-spacing:.01em;color:var(--text-muted);}
+.hint-text{font-size:12px;color:var(--text-muted);}
+
+/* --- Area unggah (ikon emoji diganti ikon garis) --- */
+.dropzone-single{
+  border:1.5px dashed var(--border-strong);border-radius:var(--gs-radius-lg);
+  background:var(--surface);padding:30px 18px;
+  transition:border-color .15s ease-out,background .15s ease-out;
+}
+.dropzone-single:hover,.dropzone-single.over{border-color:var(--primary);background:var(--primary-soft);}
+.dz-icon{
+  font-size:0;height:26px;margin-bottom:10px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563EB' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 16V4M7 9l5-5 5 5'/%3E%3Cpath d='M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:center;background-size:26px;
+}
+.dz-label{font-weight:600;font-size:14.5px;}
+.dz-hint{font-size:12.5px;color:var(--text-muted);}
+.classify-card,.q-card,.pending-card,.actionlib-item{border-width:1px;border-radius:var(--gs-radius-md);background:var(--surface);}
+.classify-card.found{border-color:var(--success-border);background:var(--success-bg);}
+.classify-card.bad{border-color:var(--danger-border);background:var(--danger-bg);}
+.pending-card{border-color:var(--warning-border);background:var(--warning-bg);}
+.q-card.ok{border-color:var(--success-border);}
+.q-card.warn{border-color:var(--warning-border);background:var(--warning-bg);}
+.q-card.bad{border-color:var(--danger-border);background:var(--danger-bg);}
+.classify-card .cc-head,.q-card .q-head,.pending-card .pc-title{font-weight:600;font-size:13.5px;}
+.classify-card .cc-detail,.q-card .q-file,.pending-card .pc-msg{font-size:12px;color:var(--text-secondary);}
+.gate-banner{border-radius:var(--gs-radius-md);border:1px solid transparent;padding:11px 14px;}
+.gate-banner.ok{border-color:var(--success-border);color:#15803D;}
+.gate-banner.warn{border-color:var(--warning-border);color:#B45309;}
+.gate-banner.bad{border-color:var(--danger-border);color:#B91C1C;}
+
+/* --- Tombol --- */
+.btn{font-weight:600;border-radius:var(--gs-radius-md);padding:9px 18px;transition:background .15s ease-out,border-color .15s ease-out,color .15s ease-out;}
+.btn-primary:hover{background:var(--primary-dark);}
+.btn-primary:disabled{background:var(--surface-muted);color:var(--text-muted);}
+.btn-secondary{border-color:var(--border-strong);}
+.btn-secondary:hover{background:var(--surface-muted);}
+.btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px;}
+.linkish{color:var(--primary);font-weight:600;}
+.linkish:hover{text-decoration:underline;}
+
+/* --- Banner status keseluruhan --- */
+.overall-banner{border-radius:var(--gs-radius-lg);border:1px solid var(--border);padding:16px 20px;}
+.overall-banner.status-clear{border-color:var(--success-border);}
+.overall-banner.status-abnormal{border-color:var(--danger-border);}
+.overall-banner.status-warning{border-color:var(--warning-border);}
+.overall-banner .ov-status{font-size:19px;font-weight:700;letter-spacing:-.01em;}
+.overall-banner .ov-reason{font-size:13px;color:var(--text-secondary);}
+.overall-banner .ov-meta{font-size:12px;color:var(--text-muted);}
+.status-banner-top,.scope-note,.helpbox{border-radius:var(--gs-radius-md);}
+.scope-note,.helpbox{background:var(--primary-soft);border-color:var(--primary-border);color:#1E40AF;font-size:12.5px;}
+
+/* --- Segmented control merek + chip filter --- */
+.brand-tabs{background:var(--surface-muted);border-radius:var(--gs-radius-lg);padding:4px;gap:4px;display:inline-flex;}
+.brand-tab{
+  border:1px solid transparent;background:transparent;border-radius:var(--gs-radius);
+  padding:7px 16px;font-weight:600;font-size:13px;color:var(--text-secondary);
+  transition:background .15s ease-out,color .15s ease-out;
+}
+.brand-tab:hover:not(:disabled){color:var(--text);}
+.brand-tab[aria-selected="true"]{background:var(--surface);color:var(--text);border-color:var(--border);box-shadow:var(--gs-shadow-xs);}
+.mode-btn{border-radius:var(--gs-radius-md);font-weight:600;}
+.mode-btn[aria-selected="true"]{background:var(--primary);border-color:var(--primary);}
+.chip{
+  border-color:var(--border);color:var(--text-secondary);padding:5px 12px;
+  transition:background .15s ease-out,border-color .15s ease-out,color .15s ease-out;
+}
+.chip:hover{border-color:var(--border-strong);background:var(--surface-muted);}
+.chip.active{
+  background:var(--primary-soft);color:var(--primary-dark);border-color:var(--primary-border);
+  box-shadow:none;transform:none;font-weight:600;
+}
+.filter-bar select,.filter-bar input[type=text]{
+  border-radius:var(--gs-radius-md);padding:9px 11px;font-size:13px;border-color:var(--border-strong);
+  transition:border-color .15s ease-out,box-shadow .15s ease-out;
+}
+.filter-bar input[type=text]{
+  min-width:260px;padding-left:34px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:11px 50%;background-size:15px;
+}
+.filter-bar select:focus,.filter-bar input[type=text]:focus{
+  outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft);
+}
+
+/* --- Kartu metrik dashboard --- */
+.card{
+  background:var(--surface);border-radius:var(--gs-radius-md);padding:13px 15px;
+  transition:border-color .15s ease-out,box-shadow .15s ease-out;
+}
+.card:hover{border-color:var(--border-strong);box-shadow:var(--gs-shadow-sm);transform:none;}
+.card.active{
+  border-color:var(--primary);background:var(--primary-soft);
+  box-shadow:0 0 0 1px var(--primary) inset;transform:none;
+}
+.card.active .lbl{font-weight:600;}
+.card .num{font-size:24px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+.card .lbl{font-size:11.5px;color:var(--text-muted);font-weight:500;}
+.dash-grid-abnormal .card{background:#FEF7F7;border-color:var(--danger-border);}
+.dash-grid-abnormal .card.active{background:var(--primary-soft);border-color:var(--primary);}
+.month-chip{border-color:var(--border);color:var(--text-secondary);}
+.qtypkg-note{border-radius:var(--gs-radius-md);background:var(--surface-muted);border-color:var(--border);color:var(--text-secondary);}
+
+/* --- Kartu monitor QTY/CBM --- */
+.qcm-card{border-width:1px;border-radius:var(--gs-radius-lg);background:var(--surface);box-shadow:var(--gs-shadow-xs);}
+.qcm-card h3{font-size:13.5px;font-weight:600;}
+.qcm-banner{border-radius:var(--gs-radius-md);font-weight:700;font-size:14px;letter-spacing:0;}
+.qcm-banner.ok{border:1px solid var(--success-border);color:#15803D;}
+.qcm-banner.bad{box-shadow:none;animation:qcmPulse 2.4s ease-in-out infinite;}
+@keyframes qcmPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.28);}
+  60%{box-shadow:0 0 0 5px rgba(220,38,38,0);}
+}
+.qcm-block h4{font-size:11px;letter-spacing:.05em;color:var(--text-muted);font-weight:600;}
+.qcm-line{border-bottom:1px solid var(--border-soft);font-size:12.5px;padding:5px 0;}
+.qcm-line .ql-v{font-weight:600;}
+
+/* --- Tabel hasil --- */
+.table-scroll{border-radius:var(--gs-radius-lg);border-color:var(--border);box-shadow:var(--gs-shadow-xs);}
+.table-meta{font-size:12px;color:var(--text-muted);}
+table.results{font-size:12.5px;}
+table.results thead th{
+  background:var(--surface-muted);color:var(--text-secondary);
+  font-size:11px;font-weight:600;letter-spacing:.04em;padding:11px 10px;
+  border-bottom:1px solid var(--border-strong);
+}
+table.results tbody td{padding:8px 10px;border-bottom:1px solid var(--border-soft);}
+table.results tbody tr:hover{background:var(--surface-muted);}
+table.results tbody tr.tr-issue td{background:#FEF2F2 !important;}
+table.results tbody tr.tr-issue:hover td{background:var(--danger-bg) !important;}
+.table-filter-select{border-radius:var(--gs-radius-sm);border-color:var(--border-strong);}
+.table-filter-select.active{background:var(--primary);border-color:var(--primary);}
+.mono{font-size:12px;}
+.status-badge{font-size:11px;font-weight:600;padding:3px 9px;}
+.notecell{border-radius:var(--gs-radius);border-color:var(--border-strong);font-size:11px;padding:5px 8px;}
+.notecell.filled{border-color:var(--primary-border);background:var(--primary-soft);}
+.notecell .notepic{color:var(--text-muted);font-size:10px;}
+.action-edit{border-radius:var(--gs-radius-sm);border-color:var(--border-strong);color:var(--primary);}
+.action-edit:hover{background:var(--primary-soft);}
+.diff-flag{font-weight:700;}
+.table-scroll::-webkit-scrollbar{width:10px;height:10px;}
+.table-scroll::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:var(--gs-radius-pill);border:3px solid var(--surface);}
+.table-scroll::-webkit-scrollbar-thumb:hover{background:#94A3B8;}
+.pager button{
+  border-radius:var(--gs-radius);border-color:var(--border-strong);padding:6px 12px;
+  transition:background .15s ease-out,border-color .15s ease-out;
+}
+.pager button:hover:not(:disabled){background:var(--surface-muted);}
+.empty-state{padding:56px 24px;color:var(--text-muted);font-size:13.5px;}
+
+/* --- Modal & detail --- */
+.modal{border-radius:var(--gs-radius-lg);box-shadow:var(--gs-shadow-overlay);}
+.modal-overlay{background:rgba(15,23,42,.55);backdrop-filter:blur(2px);}
+.modal-head{padding:18px 22px;}
+.modal-head h3{font-size:16px;font-weight:600;}
+.modal-head .msub{font-size:12px;color:var(--text-muted);}
+.modal-head .close-btn{border-radius:var(--gs-radius-sm);padding:2px 8px;transition:background .12s ease-out;}
+.modal-head .close-btn:hover{background:var(--surface-muted);color:var(--text);}
+.detail-section h4{font-size:11px;letter-spacing:.05em;color:var(--text-muted);border-bottom-color:var(--border);font-weight:600;}
+.kv-grid .k{color:var(--text-muted);font-weight:500;}
+.kv-grid .v{font-size:12.5px;}
+.remarks-box,.adj-box,.actionlib-item{border-radius:var(--gs-radius-md);background:var(--surface-muted);border-color:var(--border);}
+.adj-box{background:var(--surface);}
+.adj-row input[type=text],.adj-row textarea,.pending-card select,.sl-select{
+  border-radius:var(--gs-radius-md);border-color:var(--border-strong);padding:9px 11px;
+  transition:border-color .15s ease-out,box-shadow .15s ease-out;
+}
+.adj-row input[type=text]:focus,.adj-row textarea:focus{
+  outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft);
+}
+.status-pill{border-radius:var(--gs-radius-pill);font-weight:600;padding:6px 14px;border-color:var(--border-strong);color:var(--text-secondary);}
+.status-pill:hover{background:var(--surface-muted);}
+.status-pill[data-s="OPEN"][aria-pressed="true"]{background:#7C3AED;border-color:#7C3AED;}
+.status-pill[data-s="IN PROGRESS"][aria-pressed="true"]{background:var(--warning);border-color:var(--warning);}
+.status-pill[data-s="CLOSED"][aria-pressed="true"]{background:var(--text-muted);border-color:var(--text-muted);}
+.audit-list li{border-bottom:1px solid var(--border-soft);color:var(--text-secondary);}
+.audit-list .a-at{color:var(--text-muted);}
+.audit-list .a-by{font-weight:600;}
+.sopo-chip{background:var(--surface-muted);color:var(--text-secondary);}
+.sopo-chip.diff{background:var(--danger-bg);color:#B91C1C;}
+.mini-table th,.mini-table td{border-bottom-color:var(--border-soft);}
+.mini-table th{color:var(--text-muted);font-weight:600;}
+
+/* --- Sesi kolaboratif --- */
+.session-live{
+  border-radius:var(--gs-radius-lg);border-left-width:3px;box-shadow:var(--gs-shadow-xs);padding:14px 18px;
+}
+.sl-tag{
+  border-radius:var(--gs-radius-pill);font-size:10.5px;font-weight:600;letter-spacing:.06em;
+  padding:3px 10px;display:inline-flex;align-items:center;gap:5px;
+}
+.sl-tag::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;}
+.sl-title{font-size:13.5px;font-weight:600;}
+.sl-field label{font-size:11px;letter-spacing:.02em;text-transform:none;color:var(--text-muted);}
+.sl-field b{font-weight:600;}
+.sl-src-link{color:var(--primary);}
+.sl-dot{border-color:var(--border);padding:3px 10px;font-size:11.5px;}
+.sl-dot.owner{font-weight:600;border-color:var(--primary-border);background:var(--primary-soft);}
+.sl-sync{font-size:10.5px;font-weight:600;letter-spacing:.02em;padding:4px 10px;}
+.session-offlinewarn{border-radius:var(--gs-radius-md);border-color:var(--warning-border);}
+
+/* --- Login --- */
+.authbox{border-radius:var(--gs-radius-lg);box-shadow:var(--gs-shadow-md);padding:28px 26px;}
+.authbox h2{font-size:19px;font-weight:600;color:var(--text);}
+.authbox p.sub{font-size:12.5px;color:var(--text-muted);}
+.authbox input{border-radius:var(--gs-radius-md);background:var(--surface);padding:10px 11px;}
+.authbox input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft);}
+.authbox button{border-radius:var(--gs-radius-md);padding:11px;font-weight:600;}
+.authbox button:hover:not(:disabled){background:var(--primary-dark);border-color:var(--primary-dark);}
+footer.appfoot{color:var(--text-muted);}
 </style>
 </head>
 <body data-module="inbound">
@@ -403,7 +630,7 @@ body{padding-top:38px;}
     <div class="quality-grid" id="qualityGrid"></div>
     <div class="gate-banner" id="gateBanner"></div>
     <div class="run-row">
-      <button class="btn btn-primary" id="btnRun" disabled>▶ Jalankan Rekonsiliasi</button>
+      <button class="btn btn-primary" id="btnRun" disabled>Jalankan Rekonsiliasi</button>
       <span id="runStatus"></span>
     </div>
   </div>
@@ -417,11 +644,11 @@ body{padding-top:38px;}
         <div class="ov-meta" id="ovGen">—</div>
       </div>
       <div class="ov-reason" id="ovReason"></div>
-      <button class="btn btn-secondary btn-small" id="btnExport">⬇ Export Excel Lengkap</button>
-      <button class="btn btn-ghost btn-small" id="btnBackupCases">💾 Cadangkan Case</button>
-      <button class="btn btn-ghost btn-small" id="btnRestoreCases">📂 Pulihkan Case</button>
+      <button class="btn btn-secondary btn-small" id="btnExport">Export Excel Lengkap</button>
+      <button class="btn btn-ghost btn-small" id="btnBackupCases">Cadangkan Case</button>
+      <button class="btn btn-ghost btn-small" id="btnRestoreCases">Pulihkan Case</button>
       <input type="file" id="fileRestoreCases" accept=".json" style="display:none;">
-      <button class="btn btn-ghost btn-small" id="btnResetAllCases" style="color:var(--red);">🗑 Hapus Semua Case</button>
+      <button class="btn btn-ghost btn-small" id="btnResetAllCases" style="color:var(--red);">Hapus Semua Case</button>
     </div>
 
     <div class="scope-note" id="scopeNote" style="display:none;"></div>
@@ -440,7 +667,7 @@ body{padding-top:38px;}
 
     <div class="panel" id="panelQtyCbmMonitor">
       <div class="panel-title">
-        <h2>📊 Monitor QTY &amp; CBM (SCM vs IOR / DRR / Gabungan)</h2>
+        <h2>Monitor QTY &amp; CBM (SCM vs IOR / DRR / Gabungan)</h2>
       </div>
       <div class="panel-sub">Akumulasi total QTY dan CBM — "awal" adalah angka mentah, "akhir" sudah memperhitungkan penyesuaian manual per NOPEN (lihat modal detail).</div>
       <div id="qtyCbmGrid"></div>
@@ -461,7 +688,7 @@ body{padding-top:38px;}
           <input type="text" id="fSearch" placeholder="Cari NOPEN / shipper / keterangan / PIC...">
           <button class="btn btn-ghost" id="btnClearFilters">Reset filter</button>
         </div>
-        <button class="btn btn-secondary btn-small" id="btnExportFiltered">⬇ Export hasil filter</button>
+        <button class="btn btn-secondary btn-small" id="btnExportFiltered">Export hasil filter</button>
       </div>
       <div class="table-meta">
         <span id="tableMeta">—</span>
@@ -3524,15 +3751,15 @@ function renderIntake(){
   grid.innerHTML = Object.keys(SLOTS).map(function(k){
     var f = files[k];
     if (!f){
-      return '<div class="classify-card missing"><div class="cc-head">'+iconFor(k)+' '+C.esc(SLOTS[k].label)+' — belum dimuat</div>'+
+      return '<div class="classify-card missing"><div class="cc-head">'+C.esc(SLOTS[k].label)+' — belum dimuat</div>'+
         '<div class="cc-detail">'+C.esc(SLOTS[k].hint)+'</div></div>';
     }
     var bad = f.severity === "INVALID";
     var conf = Math.round((f.detect.confidence||0)*100);
     var r = f.report;
     var html = '<div class="classify-card '+(bad?'bad':'found')+'">'+
-      '<div class="cc-head"><span>'+iconFor(k)+' '+C.esc(SLOTS[k].label)+' '+(bad?'✕':'✓')+'</span>'+
-      '<button class="cc-remove" data-drop="'+k+'" title="Hapus berkas ini">🗑</button></div>'+
+      '<div class="cc-head"><span>'+C.esc(SLOTS[k].label)+' '+(bad?'✕':'✓')+'</span>'+
+      '<button class="cc-remove" data-drop="'+k+'" title="Hapus berkas ini">✕</button></div>'+
       '<div class="cc-detail"><div><strong>'+C.esc(f.name)+'</strong> › '+C.esc(f.sheet)+' (keyakinan '+conf+'%)</div>';
     if (f.fatal){
       html += '<div style="color:var(--red);margin-top:4px;">'+C.esc(f.note)+'</div>';
@@ -3563,7 +3790,6 @@ function renderIntake(){
 
   renderQuality();
 }
-function iconFor(k){ return k==="scm"?"📋":(k==="ior"?"🚚":"📦"); }
 
 /* ============================================================
    2. MUTU DATA
@@ -3833,7 +4059,7 @@ function renderResults(){
 
   var notes = [];
   if (RESULT.archiveInfo){
-    notes.push("🗄 Periode berubah dari terakhir kali dijalankan — " + RESULT.archiveInfo.count + " catatan (case) periode sebelumnya (" + RESULT.archiveInfo.archivedPeriod.replace("_"," s/d ") + ") otomatis dicadangkan ke file JSON (sudah terunduh) dan tidak lagi ditampilkan pada periode berjalan ini.");
+    notes.push("Periode berubah dari terakhir kali dijalankan — " + RESULT.archiveInfo.count + " catatan (case) periode sebelumnya (" + RESULT.archiveInfo.archivedPeriod.replace("_"," s/d ") + ") otomatis dicadangkan ke file JSON (sudah terunduh) dan tidak lagi ditampilkan pada periode berjalan ini.");
   }
   if (RESULT.scope && RESULT.scope.applied){
     var dropped = RESULT.scope.before - RESULT.scope.after;
@@ -4297,7 +4523,7 @@ function renderTable(){
             "<td class='mono'>"+C.fmtNumFlag(r.CBM_SCM,r.CBM_SCM_INVALID,3)+" / "+C.fmtNumFlag(r.CBM_CMP,r.CBM_CMP_INVALID,3)+"</td>"+
             "<td class='mono'>"+deltaCell(r.CBM_DIFF, cbmAdj, cbmDiffAdj, C.CBM_TOL)+"</td>"+
             "<td title='"+C.esc(ketPlain)+"'><div class='clamp-cell'>"+C.esc(r.EXPLANATION).replace(/\n/g,"<br>")+
-              (qtyAdj||cbmAdj ? '<br><span style="color:var(--purple);font-weight:700;">⚙ Disesuaikan: '+(qtyAdj?('QTY '+(qtyAdj>0?'+':'')+C.fmtNum(qtyAdj)+' '):'')+(cbmAdj?('CBM '+(cbmAdj>0?'+':'')+C.fmtNum(cbmAdj,3)):'')+'</span>' : '')+"</div></td>"+
+              (qtyAdj||cbmAdj ? '<br><span style="color:var(--purple);font-weight:600;">Disesuaikan: '+(qtyAdj?('QTY '+(qtyAdj>0?'+':'')+C.fmtNum(qtyAdj)+' '):'')+(cbmAdj?('CBM '+(cbmAdj>0?'+':'')+C.fmtNum(cbmAdj,3)):'')+'</span>' : '')+"</div></td>"+
             "<td>"+caseCell+"</td></tr>";
         }).join("");
   }
@@ -4470,7 +4696,7 @@ function openCaseDetail(nopen, brand, c){
         '<div class="adj-row"><div class="field"><label>PIC (otomatis)</label><input type="text" id="nmPic" value="'+C.esc(c?c.pic:CASES.currentUser())+'" disabled title="PIC otomatis mengikuti orang yang terakhir menyimpan case ini"></div></div>'+
         '<div class="adj-row"><div class="field"><label>Remark</label><textarea id="nmRemark" placeholder="Catatan tindak lanjut...">'+C.esc(c?c.remark:"")+'</textarea></div></div>'+
         '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
-          '<button class="btn btn-primary btn-small" id="nmSave">💾 Simpan</button>'+
+          '<button class="btn btn-primary btn-small" id="nmSave">Simpan</button>'+
           (c ? '<button class="btn btn-ghost btn-small" id="nmDelete" style="color:var(--red);">Hapus Case</button>' : '') +
         '</div>'+
         '<div class="case-meta">'+(c?("Case "+C.esc(displayCaseId(c.id))+" · Dibuat "+C.fmtStamp(c.createdAt)+" · diperbarui "+C.fmtStamp(c.updatedAt)):"Case baru untuk NOPEN ini -- belum tersimpan.")+'</div>'+
