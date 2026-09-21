@@ -614,7 +614,7 @@ footer.appfoot{color:var(--text-muted);}
       <input type="file" id="fileMain" accept=".xlsx,.xls,.xlsm" multiple>
       <div class="dz-icon">📁</div>
       <div class="dz-label">Klik atau drop file di sini (bisa lebih dari 1 file sekaligus)</div>
-      <div class="dz-hint">.xlsx — SCM, IOR/Adidas (BuatCekInbound), DRR/Nike (DRR Master)</div>
+      <div class="dz-hint">.xlsx — SCM, IOR/Adidas (sheet Inbound + BAP), DRR/Nike (DRR Master)</div>
     </div>
 
     <div id="pendingList"></div>
@@ -1119,8 +1119,9 @@ APP.schema = (function (C) {
     UNLOAD:  { req: false, alias: ["start unloading date"] }   // dikunci: hanya kolom ini
   };
 
-  // Sheet BuatCekInbound: label SO/PO pada berkas ini tertukar terhadap SCM.
-  // Orientasi diverifikasi ulang saat rekonsiliasi (lihat resolveOrientation).
+  // Berkas IOR kerap menukar label SO/PO terhadap SCM (berlaku untuk sheet
+  // Inbound/BAP maupun BuatCekInbound). Orientasi diverifikasi ulang dari data
+  // saat rekonsiliasi (lihat resolveOrientation), bukan dari nama kolom.
   var IOR_SPEC = {
     NOPEN:   { req: true,  alias: ["peb no", "peb", "nopen", "no peb"] },
     SO:      { req: true,  alias: ["so"] },
@@ -1194,7 +1195,13 @@ APP.schema = (function (C) {
     var names = wb.SheetNames.map(function (s) { return s.toLowerCase().trim(); });
     var byName = null, conf = 0, sheet = null;
 
-    if (names.indexOf("buatcekinbound") !== -1) { byName = KIND.IOR; conf = 0.9; sheet = "buatcekinbound"; }
+    // Sumber IOR sekarang sheet "Inbound" (+ "BAP") — catatan inbound penuh,
+    // NOPEN ada di kolom PEB NO. Sheet "BuatCekInbound" adalah snapshot manual
+    // per periode yang harus dibuat ulang tiap bulan, jadi hanya dipakai
+    // sebagai cadangan untuk berkas lama yang belum punya sheet Inbound.
+    if (names.indexOf("inbound") !== -1) { byName = KIND.IOR; conf = 0.9; sheet = "inbound"; }
+    else if (names.indexOf("bap") !== -1) { byName = KIND.IOR; conf = 0.9; sheet = "bap"; }
+    else if (names.indexOf("buatcekinbound") !== -1) { byName = KIND.IOR; conf = 0.9; sheet = "buatcekinbound"; }
     else if (names.indexOf("drr master") !== -1) { byName = KIND.NIKE; conf = 0.9; sheet = "drr master"; }
     else if (names.indexOf("nike") !== -1) { byName = KIND.NIKE; conf = 0.85; sheet = "nike"; }
     else if (names.indexOf("scm") !== -1) { byName = KIND.SCM; conf = 0.9; sheet = "scm"; }
@@ -3181,13 +3188,15 @@ APP.exporter = (function (C, E, CASES) {
     rows.push(["NOPEN dengan case tindak lanjut", CASES.countFor("ADIDAS"), CASES.countFor("NIKE")]);
     rows.push(["Case masih terbuka", CASES.openCountFor("ADIDAS"), CASES.openCountFor("NIKE")]);
 
-    if (state.scope && state.scope.applied) {
+    [["IOR", state.scopeIor], ["DRR", state.scope]].forEach(function (pair) {
+      var label = pair[0], sc = pair[1];
+      if (!sc || !sc.applied) return;
       rows.push([]);
-      rows.push(["Periode dibandingkan (dari SCM)", C.fmtDate(state.scope.lo) + " - " + C.fmtDate(state.scope.hi)]);
-      rows.push(["Berkas DRR mencakup", C.fmtDate(state.scope.srcMin) + " - " + C.fmtDate(state.scope.srcMax)]);
-      rows.push(["Baris DRR dipakai", state.scope.after]);
-      rows.push(["Baris DRR di luar periode", state.scope.before - state.scope.after]);
-    }
+      rows.push(["Periode dibandingkan (dari SCM)", C.fmtDate(sc.lo) + " - " + C.fmtDate(sc.hi)]);
+      rows.push(["Berkas " + label + " mencakup", C.fmtDate(sc.srcMin) + " - " + C.fmtDate(sc.srcMax)]);
+      rows.push(["Baris " + label + " dipakai", sc.after]);
+      rows.push(["Baris " + label + " di luar periode", sc.before - sc.after]);
+    });
     (state.warnings || []).forEach(function (w) { rows.push(["Catatan pemrosesan", sc(w)]); });
     return rows;
   }
@@ -3609,7 +3618,7 @@ var $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAl
 
 var SLOTS = {
   scm:  { label: "SCM",          spec: SCH.SCM_SPEC, hint: "Sheet berisi kolom NOPEN, SO, PO, QTY, CBM, GRN DATE, Brand." },
-  ior:  { label: "Adidas / IOR", spec: SCH.IOR_SPEC, hint: "Sheet BuatCekInbound / Inbound / BAP." },
+  ior:  { label: "Adidas / IOR", spec: SCH.IOR_SPEC, hint: "Sheet Inbound + BAP (NOPEN di kolom PEB NO)." },
   nike: { label: "Nike / DRR",   spec: SCH.DRR_SPEC, hint: "Sheet DRR Master / Nike." }
 };
 
@@ -3718,15 +3727,62 @@ function nopenPerMonth(rows){
     .map(function(e){ var p = e[0].split("-"); return {label: C.BULAN_PANJANG[+p[1]-1]+" "+p[0], count:e[1]}; });
 }
 
+// Sheet sumber IOR: data inbound sebenarnya tersebar di "Inbound" dan "BAP",
+// jadi keduanya dibaca lalu digabung. Nama sheet dicek case-insensitive.
+function isIorSourceSheet(sheetName){
+  var s = String(sheetName || "").toLowerCase().trim();
+  return s === "inbound" || s === "bap";
+}
+
+// Menggabungkan dua laporan mutu hasil RD.extract supaya kartu intake dan tab
+// Data Quality tetap menampilkan angka total dari seluruh sheet yang dibaca.
+function mergeReports(a, b){
+  var out = Object.assign({}, a);
+  out.totalRows = (a.totalRows || 0) + (b.totalRows || 0);
+  out.validRows = (a.validRows || 0) + (b.validRows || 0);
+  out.counts = Object.assign({}, a.counts);
+  Object.keys(b.counts || {}).forEach(function(k){
+    out.counts[k] = (out.counts[k] || 0) + (b.counts[k] || 0);
+  });
+  out.brands = Object.assign({}, a.brands);
+  Object.keys(b.brands || {}).forEach(function(k){
+    out.brands[k] = (out.brands[k] || 0) + (b.brands[k] || 0);
+  });
+  out.samples = Object.assign({}, a.samples);
+  Object.keys(b.samples || {}).forEach(function(k){
+    if (!out.samples[k]) out.samples[k] = b.samples[k];
+  });
+  if (b.dateMin && (!out.dateMin || b.dateMin < out.dateMin)) out.dateMin = b.dateMin;
+  if (b.dateMax && (!out.dateMax || b.dateMax > out.dateMax)) out.dateMax = b.dateMax;
+  return out;
+}
+
 async function assign(kind, name, wb, det, rawFile){
   setStatus("Memvalidasi " + name + "…");
   await C.yieldUI();
   var slot = SLOTS[kind];
   var sheet = det.sheet || wb.SheetNames[0];
   var res = await RD.extract(wb, sheet, slot.spec, {}, null);
+  var sheetLabel = sheet;
+
+  // IOR dibaca dari gabungan sheet Inbound + BAP (NOPEN pada kolom PEB NO).
+  if (kind === "ior" && !res.fatal && isIorSourceSheet(sheet)){
+    for (var s=0; s<wb.SheetNames.length; s++){
+      var other = wb.SheetNames[s];
+      if (other === sheet || !isIorSourceSheet(other)) continue;
+      setStatus("Membaca sheet " + other + "…");
+      await C.yieldUI();
+      var add = await RD.extract(wb, other, slot.spec, {}, null);
+      if (add.fatal) continue;          // sheet tambahan yang tidak terbaca dilewati
+      res.rows = res.rows.concat(add.rows);
+      res.report = mergeReports(res.report, add.report);
+      sheetLabel += " + " + other;
+    }
+    res.report.sheet = sheetLabel;
+  }
 
   var entry = {
-    name:name, wb:wb, sheet:sheet, detect:det, rawFile:rawFile || null,
+    name:name, wb:wb, sheet:sheetLabel, detect:det, rawFile:rawFile || null,
     rows:res.rows, report:res.report, fatal:res.fatal,
     severity: RD.severityOf(res.report, res.fatal),
     note: RD.describe(res.fatal, res.report)
@@ -3973,13 +4029,27 @@ async function run(){
     var out = {adidas:null, nike:null, generated:new Date(), scope:null, quality:qualityList(), warnings:[], periodKey:periodKey, archiveInfo:archiveInfo};
 
     if (files.ior){
-      var iorRows = files.ior.rows.slice();
+      var iorAll = files.ior.rows;
+      // Sheet Inbound memuat SELURUH riwayat inbound (bukan hanya periode
+      // berjalan), jadi dibatasi ke rentang tanggal SCM Adidas dulu — pola
+      // yang sama persis dengan DRR/Nike di bawah. Tanpa ini, setiap NOPEN
+      // di luar periode akan muncul sebagai temuan "hanya ada di IOR".
+      var rangeA = E.dateRange(scmA);
+      var scopedIor = E.scopeToPeriod(iorAll, rangeA);
+      out.scopeIor = Object.assign({scmMin:rangeA.min, scmMax:rangeA.max}, scopedIor);
+      if (!scopedIor.applied && /inbound|bap/i.test(files.ior.sheet || "")){
+        out.warnings.push("Tanggal pada berkas IOR tidak terbaca, sehingga seluruh " +
+          C.fmtNum(iorAll.length) + " baris riwayat ikut dibandingkan — hasil di luar periode SCM bisa muncul sebagai selisih. Periksa kolom UNLOADING DATE pada sheet Inbound/BAP.");
+      }
+      var iorRows = scopedIor.rows;
       var ori = SCH.resolveOrientation(scmA, iorRows);
       if (ori.swap){
         iorRows = iorRows.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
       }
+      // Riwayat lintas periode tetap memakai data penuh (belum dibatasi),
+      // supaya NOPEN periode lain masih bisa dikenali sebagai HISTORICAL_MATCH.
       var iorHist = (files.ior.history||[]).slice();
-      out.adidas = E.reconcile(scmA, iorRows, "IOR", E.buildHistory(iorHist.length?iorHist:iorRows));
+      out.adidas = E.reconcile(scmA, iorRows, "IOR", E.buildHistory(iorHist.length?iorHist:iorAll));
     }
     if (files.nike){
       var drrAll = files.nike.rows;
@@ -4061,12 +4131,14 @@ function renderResults(){
   if (RESULT.archiveInfo){
     notes.push("Periode berubah dari terakhir kali dijalankan — " + RESULT.archiveInfo.count + " catatan (case) periode sebelumnya (" + RESULT.archiveInfo.archivedPeriod.replace("_"," s/d ") + ") otomatis dicadangkan ke file JSON (sudah terunduh) dan tidak lagi ditampilkan pada periode berjalan ini.");
   }
-  if (RESULT.scope && RESULT.scope.applied){
-    var dropped = RESULT.scope.before - RESULT.scope.after;
-    notes.push("Berkas DRR memuat " + C.fmtNum(RESULT.scope.before) + " baris (" + C.fmtDate(RESULT.scope.srcMin) + " – " + C.fmtDate(RESULT.scope.srcMax) +
-      "). Dibatasi ke periode SCM " + C.fmtDate(RESULT.scope.lo) + " – " + C.fmtDate(RESULT.scope.hi) + ": " +
-      C.fmtNum(RESULT.scope.after) + " baris dibandingkan, " + C.fmtNum(dropped) + " di luar periode diabaikan.");
-  }
+  [["IOR", RESULT.scopeIor], ["DRR", RESULT.scope]].forEach(function(pair){
+    var label = pair[0], sc = pair[1];
+    if (!sc || !sc.applied) return;
+    var dropped = sc.before - sc.after;
+    notes.push("Berkas " + label + " memuat " + C.fmtNum(sc.before) + " baris (" + C.fmtDate(sc.srcMin) + " – " + C.fmtDate(sc.srcMax) +
+      "). Dibatasi ke periode SCM " + C.fmtDate(sc.lo) + " – " + C.fmtDate(sc.hi) + ": " +
+      C.fmtNum(sc.after) + " baris dibandingkan, " + C.fmtNum(dropped) + " di luar periode diabaikan.");
+  });
   (RESULT.warnings||[]).forEach(function(w){ notes.push(w); });
   var sp = $("#scopeNote");
   if (notes.length){ sp.style.display="block"; sp.innerHTML = notes.map(function(n){ return "<div>"+C.esc(n)+"</div>"; }).join(""); }
