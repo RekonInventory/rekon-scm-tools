@@ -927,11 +927,11 @@ function renderRunHistory(list){
     const total = Object.values(c).reduce((a,b)=>a+(b||0), 0);
     const when = r.updated_at ? new Date(r.updated_at).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'}) : '';
     return '<div class="runrow">' +
-      '<span class="rid">' + String(r.id||'').slice(0,8) + '</span>' +
+      '<span class="rid">' + escAttr(String(r.id||'').slice(0,8)) + '</span>' +
       '<span class="rmeta">' + (r.ref_date ? 'Acuan ' + escAttr(r.ref_date) : '(tanpa tanggal acuan)') +
         '<small>' + escAttr(when) + ' · ' + escAttr(r.operator_name||'') + ' · ' + total + ' PEB</small></span>' +
-      '<button class="btn btn-ghost btn-sm" data-openrun="' + r.id + '">Buka</button>' +
-      '<button class="btn btn-ghost btn-sm" data-delrun="' + r.id + '">Hapus</button>' +
+      '<button class="btn btn-ghost btn-sm" data-openrun="' + escAttr(r.id) + '">Buka</button>' +
+      '<button class="btn btn-ghost btn-sm" data-delrun="' + escAttr(r.id) + '">Hapus</button>' +
       '</div>';
   }).join('');
   el.querySelectorAll('[data-openrun]').forEach(b=>b.addEventListener('click', ()=>openRun(b.dataset.openrun)));
@@ -1147,11 +1147,11 @@ function renderCards(){
     state[side].forEach((f,i)=>{
       const d = document.createElement('div');
       d.className='fcard';
-      const opts = f.wb.SheetNames.map(n=>`<option value="${n}" ${n===f.sheet?'selected':''}>${n}</option>`).join('');
-      const colOpts = sel => f.headers.map((h,ci)=>`<option value="${ci}" ${ci===sel?'selected':''}>${h}</option>`).join('');
+      const opts = f.wb.SheetNames.map(n=>`<option value="${escAttr(n)}" ${n===f.sheet?'selected':''}>${escAttr(n)}</option>`).join('');
+      const colOpts = sel => f.headers.map((h,ci)=>`<option value="${ci}" ${ci===sel?'selected':''}>${escAttr(h)}</option>`).join('');
       const others = (f.candidates||[]).filter(n=>n!==f.sheet);
       const warn = others.length
-        ? `<div class="warnline">Sheet lain di file ini juga punya kolom PEB: <b>${others.join(', ')}</b>. Pastikan pilihan di bawah sudah benar.</div>`
+        ? `<div class="warnline">Sheet lain di file ini juga punya kolom PEB: <b>${others.map(escAttr).join(', ')}</b>. Pastikan pilihan di bawah sudah benar.</div>`
         : '';
       const fld = (k,label,optional) =>
         `<div class="mfield"><label>${label}</label><select data-k="${k}">${
@@ -1168,7 +1168,7 @@ function renderCards(){
       d.innerHTML = `
         <div class="fcard-top">
           <div>
-            <div class="fname">${f.name}</div>
+            <div class="fname">${escAttr(f.name)}</div>
             <div class="fmeta">${f.dataRows.toLocaleString('id-ID')} baris data · header di baris ${f.hIdx+1}</div>
           </div>
           <button class="x" title="Hapus">&times;</button>
@@ -1577,21 +1577,21 @@ function renderTable(reset){
       const r = rows[i], s = STATUS[r.status];
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td class="mono">${r.peb}</td>
-        <td>${r.category ? `<span class="tag ${r.category==='Nike'?'t-cat-nike':'t-cat-adidas'}">${r.category}</span>` : '<span class="muted">—</span>'}</td>
-        <td class="mono aju">${r.aju || '<span class="muted">—</span>'}</td>
-        <td class="mono">${r.job || '<span class="muted">—</span>'}</td>
-        <td class="mono nowrap">${r.grn || '<span class="muted">—</span>'}</td>
-        <td class="mono nowrap">${r.gout || '<span class="muted">—</span>'}</td>
-        <td class="mono nowrap">${r.arr || '<span class="muted">—</span>'}</td>
-        <td>${r.shipInv || '<span class="muted">—</span>'}</td>
-        <td>${r.shipScm || '<span class="muted">—</span>'}</td>
+        <td class="mono">${escAttr(r.peb)}</td>
+        <td>${r.category ? `<span class="tag ${r.category==='Nike'?'t-cat-nike':'t-cat-adidas'}">${escAttr(r.category)}</span>` : '<span class="muted">—</span>'}</td>
+        <td class="mono aju">${escAttr(r.aju) || '<span class="muted">—</span>'}</td>
+        <td class="mono">${escAttr(r.job) || '<span class="muted">—</span>'}</td>
+        <td class="mono nowrap">${escAttr(r.grn) || '<span class="muted">—</span>'}</td>
+        <td class="mono nowrap">${escAttr(r.gout) || '<span class="muted">—</span>'}</td>
+        <td class="mono nowrap">${escAttr(r.arr) || '<span class="muted">—</span>'}</td>
+        <td>${escAttr(r.shipInv) || '<span class="muted">—</span>'}</td>
+        <td>${escAttr(r.shipScm) || '<span class="muted">—</span>'}</td>
         <td class="num">${r.qtyInv==null?'<span class="muted">—</span>':fmt(r.qtyInv)}</td>
         <td class="num">${r.qtyScm==null?'<span class="muted">—</span>':fmt(r.qtyScm)}</td>
         <td class="num">${r.diff==null?'<span class="muted">—</span>':(r.diff===0?'0':fmt(r.diff))}</td>
-        <td class="muted" style="font-size:11.5px">${r.src}</td>
+        <td class="muted" style="font-size:11.5px">${escAttr(r.src)}</td>
         <td><span class="tag ${s.cls}">${s.label}</span></td>
-        <td><input type="text" class="noteinput" data-peb="${r.peb}"
+        <td><input type="text" class="noteinput" data-peb="${escAttr(r.peb)}"
               value="${escAttr(state.notes.get(r.peb)||'')}" placeholder="Tambah catatan…"></td>`;
       frag.appendChild(tr);
     }
@@ -1656,12 +1656,12 @@ function renderListing(reset){
       const r = rows[i];
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><span class="tag t-src-${r.side}">${r.label}</span></td>
-        <td class="muted" style="font-size:11.5px">${r.file}</td>
-        <td class="mono">${r.peb || '<span class="muted">—</span>'}</td>
-        <td>${r.category ? `<span class="tag ${r.category==='Nike'?'t-cat-nike':'t-cat-adidas'}">${r.category}</span>` : '<span class="muted">—</span>'}</td>
-        <td class="mono">${r.so || '<span class="muted">—</span>'}</td>
-        <td class="mono">${r.po || '<span class="muted">—</span>'}</td>`;
+        <td><span class="tag t-src-${r.side}">${escAttr(r.label)}</span></td>
+        <td class="muted" style="font-size:11.5px">${escAttr(r.file)}</td>
+        <td class="mono">${escAttr(r.peb) || '<span class="muted">—</span>'}</td>
+        <td>${r.category ? `<span class="tag ${r.category==='Nike'?'t-cat-nike':'t-cat-adidas'}">${escAttr(r.category)}</span>` : '<span class="muted">—</span>'}</td>
+        <td class="mono">${escAttr(r.so) || '<span class="muted">—</span>'}</td>
+        <td class="mono">${escAttr(r.po) || '<span class="muted">—</span>'}</td>`;
       frag.appendChild(tr);
     }
     tb.appendChild(frag);
