@@ -1129,13 +1129,18 @@ APP.schema = (function (C) {
     QTY:     { req: true,  alias: ["qty", "total carton"] },
     CBM:     { req: true,  alias: ["cbm act", "cbm actual", "cbm"] },
     SHIPPER: { req: false, alias: ["shipper", "shipper name", "supplier", "supplier name", "vendor"] },
-    DATE:    { req: false, alias: ["unloading date", "tgl", "date"] }
+    DATE:    { req: false, alias: ["unloading date", "tgl", "date"] },
+    // Fallback PER BARIS (bukan pengganti kolom): dipakai hanya kalau nilai
+    // UNLOADING DATE baris itu kosong/tidak terbaca (lihat extract()). Kolom
+    // UNLOADING DATE tetap sumber utama untuk semua baris lainnya.
+    DATE_FALLBACK: { req: false, alias: ["truck entry date"] }
   };
 
   // Riwayat IOR (sheet Inbound / BAP) untuk penelusuran lintas periode.
   var IOR_HIST_SPEC = {
     NOPEN:   { req: true,  alias: ["peb no", "peb", "nopen", "no peb"] },
     DATE:    { req: false, alias: ["unloading date", "truck entry date", "peb date"] },
+    DATE_FALLBACK: { req: false, alias: ["truck entry date"] },
     UNLOAD:  { req: false, alias: ["unloading date"] },          // dikunci
     SHIPPER: { req: false, alias: ["shipper", "supplier", "nama shipper", "shipper name", "vendor", "supplier name"] }
   };
@@ -1375,6 +1380,12 @@ APP.reader = (function (C, SCH) {
       }
 
       var tgl = (m.DATE !== undefined && m.DATE !== -1) ? C.toDate(r[m.DATE]) : null;
+      // Fallback per baris: kalau UNLOADING DATE baris ini kosong/tidak
+      // terbaca (mis. sel cuma berisi jam tanpa tanggal), coba TRUCK ENTRY
+      // DATE baris yang sama. Kolom utama tetap dicoba dulu untuk semua baris.
+      if (!tgl && m.DATE_FALLBACK !== undefined && m.DATE_FALLBACK !== -1) {
+        tgl = C.toDate(r[m.DATE_FALLBACK]);
+      }
       if ((m.DATE !== undefined && m.DATE !== -1) && !tgl && spec.DATE && spec.DATE.req) {
         issues.push("Tanggal tidak valid"); report.counts.badDate++; sample("badDate", excelRow);
       }
@@ -1592,6 +1603,19 @@ APP.engine = (function (C) {
     return { min: min, max: max };
   }
 
+  // Perluas rentang tanggal SCM (yang bisa jadi cuma sampai tgl tertentu, mis.
+  // 28 Sep karena input SCM belum selesai) menjadi SATU BULAN PENUH kalender
+  // (tgl 1 s.d. akhir bulan). Dipakai sebagai acuan periode untuk scopeToPeriod
+  // supaya baris IOR/DRR bertanggal akhir bulan yang sama (mis. 29-30 Sep)
+  // tetap ikut dibandingkan, bukan dibuang diam-diam hanya karena SCM belum
+  // sampai ke tanggal itu.
+  function monthRange(range) {
+    if (!range.min || !range.max) return range;
+    var lo = new Date(Date.UTC(range.min.getUTCFullYear(), range.min.getUTCMonth(), 1));
+    var hi = new Date(Date.UTC(range.max.getUTCFullYear(), range.max.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    return { min: lo, max: hi };
+  }
+
   function scopeToPeriod(rows, range) {
     if (!range.min || !range.max) return { rows: rows, applied: false };
     var dated = 0;
@@ -1606,7 +1630,7 @@ APP.engine = (function (C) {
   }
 
   /* ---------- rekonsiliasi ---------- */
-  function reconcile(scmRows, cmpRows, cmpLabel, history) {
+  function reconcile(scmRows, cmpRows, cmpLabel, history, scmActualRange) {
     var A = aggregate(scmRows), B = aggregate(cmpRows);
     var cmpIdx = buildSoPoIndex(cmpRows); // untuk cross-check ONLY_IN_SCM: cari SO/PO di sisi comparator
     var scmIdx = buildSoPoIndex(scmRows); // untuk cross-check ONLY_IN_IOR/DRR: cari SO/PO di sisi SCM
@@ -1738,6 +1762,16 @@ APP.engine = (function (C) {
         if (crossFoundB.length) {
           crossNopen = crossFoundB;
           crossNote = "SO/PO ditemukan di SCM dengan NOPEN " + crossFoundB.join(", ");
+        }
+        // Periode acuan kini 1 bulan penuh (lihat monthRange), jadi baris di
+        // ujung bulan yang sama (mis. tgl 29-30) ikut dibandingkan meski data
+        // SCM sendiri baru sampai tgl tertentu (mis. 28). Kalau NOPEN ini
+        // tanggalnya JATUH SETELAH tanggal terakhir SCM yang sebenarnya, beri
+        // catatan eksplisit -- supaya jelas ini kemungkinan besar cuma karena
+        // SCM belum sempat diinput, bukan NOPEN yang benar-benar hilang.
+        if (scmActualRange && scmActualRange.max && b.TGL && b.TGL > scmActualRange.max) {
+          autoNote = "NOPEN inbound tgl " + C.fmtDate(b.TGL) + " — data SCM periode ini baru tercatat sampai tgl " +
+            C.fmtDate(scmActualRange.max) + ", kemungkinan NOPEN ini belum sempat diinput ke SCM.";
         }
       }
 
@@ -2139,7 +2173,7 @@ APP.engine = (function (C) {
   return {
     CLASS: CLASS, LABEL: LABEL, SEVERITY: SEVERITY, PRIORITY: PRIORITY, ROW_STATUS: ROW_STATUS,
     ISSUE_LABEL: ISSUE_LABEL,
-    aggregate: aggregate, buildHistory: buildHistory, dateRange: dateRange,
+    aggregate: aggregate, buildHistory: buildHistory, dateRange: dateRange, monthRange: monthRange,
     scopeToPeriod: scopeToPeriod, reconcile: reconcile, summarize: summarize, isIssue: isIssue
   };
 })(APP);
@@ -4035,7 +4069,14 @@ async function run(){
       // yang sama persis dengan DRR/Nike di bawah. Tanpa ini, setiap NOPEN
       // di luar periode akan muncul sebagai temuan "hanya ada di IOR".
       var rangeA = E.dateRange(scmA);
-      var scopedIor = E.scopeToPeriod(iorAll, rangeA);
+      // Acuan periode dilebarkan jadi 1 BULAN PENUH (tgl 1 s.d. akhir bulan),
+      // bukan cuma sampai tanggal terakhir SCM -- supaya baris IOR di ujung
+      // bulan yang sama (mis. tgl 29-30, sedangkan SCM baru sampai tgl 28)
+      // tetap dibandingkan alih-alih dibuang diam-diam. `rangeA` (tanggal
+      // SCM yang sebenarnya) tetap dipakai reconcile() untuk memberi catatan
+      // ketika NOPEN comparator jatuh setelah tanggal SCM yang sebenarnya.
+      var monthRangeA = E.monthRange(rangeA);
+      var scopedIor = E.scopeToPeriod(iorAll, monthRangeA);
       out.scopeIor = Object.assign({scmMin:rangeA.min, scmMax:rangeA.max}, scopedIor);
       if (!scopedIor.applied && /inbound|bap/i.test(files.ior.sheet || "")){
         out.warnings.push("Tanggal pada berkas IOR tidak terbaca, sehingga seluruh " +
@@ -4049,19 +4090,20 @@ async function run(){
       // Riwayat lintas periode tetap memakai data penuh (belum dibatasi),
       // supaya NOPEN periode lain masih bisa dikenali sebagai HISTORICAL_MATCH.
       var iorHist = (files.ior.history||[]).slice();
-      out.adidas = E.reconcile(scmA, iorRows, "IOR", E.buildHistory(iorHist.length?iorHist:iorAll));
+      out.adidas = E.reconcile(scmA, iorRows, "IOR", E.buildHistory(iorHist.length?iorHist:iorAll), rangeA);
     }
     if (files.nike){
       var drrAll = files.nike.rows;
       var range = E.dateRange(scmN);
-      var scoped = E.scopeToPeriod(drrAll, range);
+      var monthRangeN = E.monthRange(range);
+      var scoped = E.scopeToPeriod(drrAll, monthRangeN);
       out.scope = Object.assign({scmMin:range.min, scmMax:range.max}, scoped);
       var ori2 = SCH.resolveOrientation(scmN, scoped.rows);
       var drrRows = scoped.rows;
       if (ori2.swap){
         drrRows = drrRows.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
       }
-      out.nike = E.reconcile(scmN, drrRows, "DRR", E.buildHistory(drrAll));
+      out.nike = E.reconcile(scmN, drrRows, "DRR", E.buildHistory(drrAll), range);
     }
 
     out.overall = overallStatus(out);

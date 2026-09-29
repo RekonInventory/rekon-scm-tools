@@ -178,14 +178,11 @@
       return null;
     }
 
-    function relativeLabel(ms) {
-      var secs = Math.max(0, Math.round(ms / 1000));
-      if (secs < 10) return "Tersinkron barusan";
-      if (secs < 60) return "Tersinkron " + secs + " detik lalu";
-      var mins = Math.round(secs / 60);
-      if (mins < 60) return "Tersinkron " + mins + " menit lalu";
-      var hrs = Math.round(mins / 60);
-      return "Tersinkron " + hrs + " jam lalu";
+    function clockLabel(when) {
+      var d = new Date(when);
+      var hh = String(d.getHours()).padStart(2, "0");
+      var mm = String(d.getMinutes()).padStart(2, "0");
+      return "Sync jam " + hh + ":" + mm;
     }
 
     function render() {
@@ -197,7 +194,7 @@
         live.textContent = "Gagal sinkron";
       } else if (state === "synced" && lastSyncAt) {
         live.setAttribute("data-state", "synced");
-        live.textContent = relativeLabel(Date.now() - lastSyncAt);
+        live.textContent = clockLabel(lastSyncAt);
       } else {
         live.removeAttribute("data-state");
         live.textContent = "";
@@ -392,19 +389,28 @@
   var IDLE_EVENTS = ["mousemove", "mousedown", "keydown", "wheel", "touchstart", "scroll"];
 
   function setupIdleLogout() {
-    var lastMark = 0; // throttle penulisan localStorage, bukan sumber kebenaran waktunya
+    var lastMark = 0;               // throttle penulisan localStorage, bukan sumber kebenaran waktunya
+    var memoryFallback = Date.now(); // dipakai kalau localStorage tidak bisa diakses (mode privat)
+    var storageOk = true;
 
-    function markActivity() {
+    function markActivity(e) {
+      // Guard e.isTrusted: hanya event yang benar-benar dipicu pengguna yang
+      // dihitung. Tanpa ini, animasi/auto-scroll yang dipicu skrip aplikasi
+      // (mis. sesi bersama, log yang auto-scroll) bisa menimpa jejak waktu
+      // idle terus-menerus dan timeout tidak akan pernah tercapai.
+      if (e && !e.isTrusted) return;
       var now = Date.now();
+      memoryFallback = now;
       if (now - lastMark < 5000) return;
       lastMark = now;
-      try { localStorage.setItem(IDLE_STORAGE_KEY, String(now)); } catch (e) { /* mode privat */ }
+      try { localStorage.setItem(IDLE_STORAGE_KEY, String(now)); } catch (e2) { storageOk = false; }
     }
     function readLastActivity() {
+      if (!storageOk) return memoryFallback;
       try {
         var v = parseInt(localStorage.getItem(IDLE_STORAGE_KEY), 10);
-        return isNaN(v) ? Date.now() : v;
-      } catch (e) { return Date.now(); }
+        return isNaN(v) ? memoryFallback : v;
+      } catch (e) { storageOk = false; return memoryFallback; }
     }
 
     markActivity();
@@ -413,7 +419,7 @@
     });
 
     var loggedOut = false;
-    setInterval(function () {
+    function checkIdle() {
       if (!authedUser || loggedOut) return;
       var idleFor = Date.now() - readLastActivity();
       if (idleFor < IDLE_LIMIT_MS) return;
@@ -424,7 +430,22 @@
         shellToast("Sesi berakhir karena tidak ada aktivitas selama 2 jam. Silakan masuk kembali.");
         setTimeout(function () { location.reload(); }, 1200);
       });
-    }, IDLE_CHECK_MS);
+    }
+
+    // Browser membekukan timer (setInterval) pada tab yang lama disembunyikan
+    // (background/minimize/tab lain aktif). Begitu tab dibuka lagi, gerakan
+    // mouse pengguna langsung memicu markActivity() dan menimpa jejak waktu
+    // SEBELUM interval berikutnya sempat mengecek -- akibatnya timeout terasa
+    // "tidak pernah jalan" walau sudah didiamkan berjam-jam. Makanya pengecekan
+    // juga dipaksa jalan persis saat tab terlihat/fokus lagi, memakai jejak
+    // waktu yang MASIH LAMA (belum ketiban markActivity dari kembalinya user).
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") checkIdle();
+    });
+    window.addEventListener("pageshow", checkIdle);
+    window.addEventListener("focus", checkIdle);
+
+    setInterval(checkIdle, IDLE_CHECK_MS);
   }
 
   function init() {
