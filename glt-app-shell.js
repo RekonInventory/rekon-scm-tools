@@ -322,6 +322,9 @@
   }
 
   var authedUser = null; // dipakai setupIdleLogout() untuk tahu kapan perlu memantau idle
+  // Diisi setupIdleLogout(); dipanggil SEKALI oleh fillIdentity() begitu status sesi
+  // awal diketahui (lihat komentar di setupIdleLogout).
+  var onInitialSession = null;
 
   function fillIdentity() {
     var client = supaClient();
@@ -333,6 +336,14 @@
 
     function render(user) {
       authedUser = user;
+      // Panggilan render pertama = status sesi saat halaman baru dimuat. Hanya di
+      // sini pengecekan "sudah idle sebelum halaman ini dimuat" dijalankan; login
+      // baru sesudahnya (user mengetik password) tidak boleh kena.
+      if (onInitialSession) {
+        var fn = onInitialSession;
+        onInitialSession = null;
+        fn(user);
+      }
       var name = displayNameFrom(user);
       if (!user) {
         if (nameEl) nameEl.textContent = "Belum masuk";
@@ -405,32 +416,55 @@
       lastMark = now;
       try { localStorage.setItem(IDLE_STORAGE_KEY, String(now)); } catch (e2) { storageOk = false; }
     }
-    function readLastActivity() {
-      if (!storageOk) return memoryFallback;
+    function readStored() {
+      if (!storageOk) return null;
       try {
         var v = parseInt(localStorage.getItem(IDLE_STORAGE_KEY), 10);
-        return isNaN(v) ? memoryFallback : v;
-      } catch (e) { storageOk = false; return memoryFallback; }
+        return isNaN(v) ? null : v;
+      } catch (e) { storageOk = false; return null; }
+    }
+    function readLastActivity() {
+      var v = readStored();
+      return v === null ? memoryFallback : v;
     }
 
-    markActivity();
+    // PENTING: jejak aktivitas terakhir dibaca SEBELUM listener dipasang dan TIDAK
+    // ditimpa "sekarang" saat halaman dimuat. Browser yang menghibernasi/membuang
+    // tab lama (mis. Vivaldi, Chrome Memory Saver) memuat ulang halaman begitu
+    // pengguna kembali; kalau setiap pemuatan langsung mencatat "aktif sekarang",
+    // waktu idle 2 jam selalu terhapus sebelum sempat dicek. Nilai ini disimpan
+    // (bootLast) dan dinilai sekali begitu status sesi awal diketahui.
+    var bootLast = readStored();
+    if (bootLast === null) { markActivity(); bootLast = Date.now(); } // kunjungan pertama
+
     IDLE_EVENTS.forEach(function (evt) {
       document.addEventListener(evt, markActivity, { passive: true });
     });
 
     var loggedOut = false;
-    function checkIdle() {
-      if (!authedUser || loggedOut) return;
-      var idleFor = Date.now() - readLastActivity();
-      if (idleFor < IDLE_LIMIT_MS) return;
+    function logoutIdle() {
+      if (loggedOut) return;
       loggedOut = true;
       var client = supaClient();
       if (!client) return;
-      client.auth.signOut().then(function () {
+      function done() {
         shellToast("Sesi berakhir karena tidak ada aktivitas selama 2 jam. Silakan masuk kembali.");
         setTimeout(function () { location.reload(); }, 1200);
-      });
+      }
+      // Jalur gagal (mis. offline) tetap menuju layar login; sesi lokal dibersihkan supabase-js.
+      client.auth.signOut().then(done, done);
     }
+    function checkIdle() {
+      if (!authedUser || loggedOut) return;
+      if (Date.now() - readLastActivity() >= IDLE_LIMIT_MS) logoutIdle();
+    }
+
+    // Dipanggil sekali oleh fillIdentity() dengan status sesi saat halaman dimuat.
+    // Kalau sudah login DAN terakhir aktif >= 2 jam lalu (sebelum halaman ini
+    // dimuat), langsung keluar -- tanpa peduli gerakan mouse setelahnya.
+    onInitialSession = function (user) {
+      if (user && Date.now() - bootLast >= IDLE_LIMIT_MS) logoutIdle();
+    };
 
     // Browser membekukan timer (setInterval) pada tab yang lama disembunyikan
     // (background/minimize/tab lain aktif). Begitu tab dibuka lagi, gerakan
@@ -461,8 +495,8 @@
     setupCollapse();
     setupDrawer();
     setupUserMenu();
+    setupIdleLogout(); // harus sebelum fillIdentity(): memasang hook sesi awal yang dipanggil fillIdentity()
     fillIdentity();
-    setupIdleLogout();
   }
 
   if (document.readyState === "loading") {

@@ -1133,7 +1133,11 @@ APP.schema = (function (C) {
     // Fallback PER BARIS (bukan pengganti kolom): dipakai hanya kalau nilai
     // UNLOADING DATE baris itu kosong/tidak terbaca (lihat extract()). Kolom
     // UNLOADING DATE tetap sumber utama untuk semua baris lainnya.
-    DATE_FALLBACK: { req: false, alias: ["truck entry date"] }
+    DATE_FALLBACK: { req: false, alias: ["truck entry date"] },
+    // Tanggal unloading APA ADANYA (dikunci, tanpa fallback) -- dipakai untuk
+    // kolom tampilan "Tgl Unloading (IOR)", terpisah dari DATE/DATE_FALLBACK
+    // yang dipakai untuk penentuan periode. Sama seperti pola di DRR_SPEC.
+    UNLOAD:  { req: false, alias: ["unloading date"] }
   };
 
   // Riwayat IOR (sheet Inbound / BAP) untuk penelusuran lintas periode.
@@ -1568,13 +1572,26 @@ APP.engine = (function (C) {
   }
 
   /* ---------- indeks histori (seluruh periode) ---------- */
+  // Selain info tanggal/bulan (dipakai untuk catatan "ketemu di periode lain"),
+  // sekarang juga mengagregasi QTY/CBM/SO/PO penuh per NOPEN -- persis seperti
+  // aggregate() -- supaya NOPEN yang "hanya di SCM" pada periode berjalan bisa
+  // dibandingkan SUNGGUHAN terhadap data historisnya (lihat reconcile()),
+  // bukan cuma diberi tahu "ada di bulan lain" tanpa tahu apakah datanya cocok.
+  // hasFullData=false berarti baris sumbernya tidak punya kolom SO/PO/QTY/CBM
+  // (mis. data lama/format ringan) -- reconcile() akan mundur ke perilaku lama.
   function buildHistory(rows) {
     var m = new Map();
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       if (!r.NOPEN) continue;
       var g = m.get(r.NOPEN);
-      if (!g) { g = { min: null, max: null, months: new Map(), unload: null, unloadMax: null, shipper: "" }; m.set(r.NOPEN, g); }
+      if (!g) {
+        g = {
+          min: null, max: null, months: new Map(), unload: null, unloadMax: null, shipper: "",
+          QTY: 0, CBM: 0, pairs: new Set(), soSet: new Set(), poSet: new Set(), lines: 0, hasFullData: false
+        };
+        m.set(r.NOPEN, g);
+      }
       var u = r.UNLOAD;
       if (u) {
         if (!g.unload || u < g.unload) g.unload = u;
@@ -1582,11 +1599,17 @@ APP.engine = (function (C) {
       }
       if (!g.shipper && r.SHIPPER) g.shipper = C.S(r.SHIPPER).trim();
       var d = r.TGL;
-      if (!d) continue;
-      if (!g.min || d < g.min) g.min = d;
-      if (!g.max || d > g.max) g.max = d;
-      var key = d.getUTCFullYear() + "-" + d.getUTCMonth();
-      if (!g.months.has(key)) g.months.set(key, d);
+      if (d) {
+        if (!g.min || d < g.min) g.min = d;
+        if (!g.max || d > g.max) g.max = d;
+        var key = d.getUTCFullYear() + "-" + d.getUTCMonth();
+        if (!g.months.has(key)) g.months.set(key, d);
+      }
+      if (r.SO !== undefined && r.PO !== undefined && r.QTY !== undefined && r.QTY !== null) {
+        g.hasFullData = true;
+        g.QTY += (r.QTY || 0); g.CBM += (r.CBM || 0); g.lines++;
+        g.pairs.add(r.SO + "||" + r.PO); g.soSet.add(r.SO); g.poSet.add(r.PO);
+      }
     }
     return m;
   }
@@ -1643,6 +1666,27 @@ APP.engine = (function (C) {
 
     list.forEach(function (n) {
       var a = A.get(n), b = B.get(n);
+      var hit = history ? history.get(n) : null;
+      // NOPEN yang cuma ada di SCM pada periode berjalan, TAPI histori (periode
+      // lain) punya data pembanding LENGKAP (SO/PO/QTY/CBM, bukan cuma info
+      // bulan) -- pakai data historis itu SEBAGAI b, supaya logic pembanding
+      // QTY/CBM/SO-PO di bawah (persis yang dipakai untuk periode berjalan)
+      // ikut berlaku untuk perbandingan lintas periode. Konsekuensinya:
+      // histori yang datanya BENAR-BENAR cocok tetap HISTORICAL_MATCH (aman,
+      // bukan abnormal); histori yang datanya BEDA langsung jadi temuan
+      // abnormal biasa (QTY_MISMATCH dst), tidak lagi disembunyikan di balik
+      // label "historical" (lihat pickPrimary()).
+      var fromHistory = false;
+      if (a && !b && hit && hit.hasFullData) {
+        b = {
+          QTY: hit.QTY, CBM: hit.CBM, pairs: hit.pairs, soSet: hit.soSet, poSet: hit.poSet,
+          lines: hit.lines, SHIPPER: hit.shipper, shipperSet: hit.shipper ? new Set([hit.shipper]) : new Set(),
+          TGL: hit.min, UNLOAD: hit.unload, UNLOAD_MAX: hit.unloadMax,
+          invalid: 0, invalidQty: 0, invalidCbm: 0, missing: 0, dupes: 0, rowsRef: [],
+          QTY_PACKAGE: 0, hasQtyPackage: false
+        };
+        fromHistory = true;
+      }
       var classes = [];
       var qs = a ? C.r3(a.QTY) : null, qc = b ? C.r3(b.QTY) : null;
       var cs = a ? C.r3(a.CBM) : null, cc = b ? C.r3(b.CBM) : null;
@@ -1731,12 +1775,40 @@ APP.engine = (function (C) {
           else if (!sopoCoverageOk) bits.push("rincian SO/PO berbeda");
           ket = bits.join("; ");
         }
+
+        // Baris ini dibandingkan terhadap data HISTORIS (bukan periode berjalan
+        // comparator yang memang tidak ada) -- lihat blok `fromHistory` di atas.
+        // classes/ket di atas sudah benar (dihasilkan oleh logic pembanding yang
+        // sama persis dengan periode berjalan); di sini tinggal menyesuaikan
+        // status/label supaya jelas ini perbandingan lintas periode, dan
+        // memutuskan HISTORICAL_MATCH vs abnormal berdasarkan hasilnya.
+        if (fromHistory) {
+          var bulanH = hit.months.size
+            ? Array.from(hit.months.values()).sort(function (x, y) { return x - y; }).map(C.monthLabel)
+            : [];
+          var periodeTxt = bulanH.length
+            ? ("periode " + bulanH.join(", ") + (hit.min ? " (" + C.fmtDate(hit.min) + ")" : ""))
+            : "periode lain (bukan periode berjalan)";
+          status = "HANYA DI SCM";
+          classes.push(CLASS.ONLY_IN_SCM);
+          if (sopoCoverageOk && qtyOk && cbmOk) {
+            // Data historis cocok sepenuhnya -- aman, cuma beda waktu input.
+            // Awalan "NOPEN di X ada di periode " sengaja dipertahankan: explain()
+            // memotong awalan ini untuk menyusun kalimat penjelasannya.
+            classes.push(CLASS.HISTORICAL_MATCH);
+            autoNote = "NOPEN di " + cmpLabel + " ada di " + periodeTxt + " — data QTY/CBM/SO-PO cocok, kemungkinan cuma beda waktu input ke SCM";
+          } else {
+            // Data historis BERBEDA -- classes QTY_MISMATCH/CBM_MISMATCH/SO_MISMATCH/
+            // PO_MISMATCH di atas sudah benar, JANGAN push HISTORICAL_MATCH supaya
+            // tidak menutupi temuan abnormal ini (lihat pickPrimary()).
+            autoNote = "Data " + cmpLabel + " yang dibandingkan berasal dari " + periodeTxt + ".";
+          }
+        }
       } else if (a && !b) {
         status = "HANYA DI SCM";
         classes.push(CLASS.ONLY_IN_SCM);
         ket = "NOPEN tercatat di SCM tetapi belum ada di " + cmpLabel;
         onlyA = Array.from(a.pairs).sort();
-        var hit = history ? history.get(n) : null;
         if (hit && hit.months.size) {
           classes.push(CLASS.HISTORICAL_MATCH);
           var bulan = Array.from(hit.months.values()).sort(function (x, y) { return x - y; }).map(C.monthLabel);
@@ -1879,6 +1951,10 @@ APP.engine = (function (C) {
         CBM_SCM: cs, CBM_CMP: cc, CBM_DIFF: (a || b) ? C.r3((a ? cs : 0) - (b ? cc : 0)) : null, CEK_CBM: cekCbm,
         CBM_SCM_INVALID: a ? a.invalidCbm : 0, CBM_CMP_INVALID: b ? b.invalidCbm : 0,
         CEK_SOPO: cekSopo, KETERANGAN: ket, AUTO: autoNote, SOPO_INFO: sopoInfo,
+        // true = kolom pembanding (SO/PO/QTY/CBM IOR/DRR) baris ini diisi dari data
+        // HISTORIS periode lain, bukan periode berjalan. Total periode (monitor QTY/
+        // CBM & ringkasan export) wajib mengecualikan nilai pembanding baris ini.
+        FROM_HISTORY: fromHistory,
         CROSS_NOPEN: crossNopen, CROSS_NOTE: crossNote,
         INVALID: invalid, MISSING: missing, DUPES: dupes,
         ROWS_SCM: a ? a.rowsRef : [], ROWS_CMP: b ? b.rowsRef : [],
@@ -2023,9 +2099,13 @@ APP.engine = (function (C) {
         r.SOPO_INFO.beda.map(function (p) { return "SO " + p.so + " / PO " + p.po + " (" + p.sisi + ")"; }).join(", ") + ".");
     }
     if (has(r, CLASS.ONLY_IN_SCM)) {
-      lines.push(has(r, CLASS.HISTORICAL_MATCH)
-        ? "NOPEN tidak ditemukan pada periode aktif, tetapi ditemukan pada histori " + r.AUTO.replace(/^NOPEN di \w+ ada di periode /, "") + "."
-        : "NOPEN terdapat di SCM tetapi belum ditemukan di " + cmpLabel + ".");
+      if (has(r, CLASS.HISTORICAL_MATCH)) {
+        lines.push("NOPEN tidak ditemukan pada periode aktif, tetapi ditemukan pada histori " + r.AUTO.replace(/^NOPEN di \w+ ada di periode /, "") + ".");
+      } else if (r.FROM_HISTORY) {
+        lines.push("NOPEN belum ada di " + cmpLabel + " periode berjalan; dibandingkan dengan data " + cmpLabel + " periode lain dan ditemukan selisih.");
+      } else {
+        lines.push("NOPEN terdapat di SCM tetapi belum ditemukan di " + cmpLabel + ".");
+      }
     }
     if (has(r, CLASS.ONLY_IN_IOR) || has(r, CLASS.ONLY_IN_DRR)) {
       lines.push("NOPEN terdapat di " + cmpLabel + " tetapi belum ditemukan di SCM.");
@@ -2085,7 +2165,10 @@ APP.engine = (function (C) {
       if (r.CROSS_NOTE) histLabel += " — " + r.CROSS_NOTE;
       return histLabel;
     }
-    if (has(r, CLASS.ONLY_IN_SCM)) parts.push("ONLY IN SCM");
+    // Baris yang dibandingkan terhadap data IOR/DRR bulan lain (FROM_HISTORY)
+    // dan datanya tidak cocok: labelnya "HISTORICAL + ... MISMATCH" -- tetap
+    // abnormal/merah, karena HISTORICAL_MATCH sengaja tidak di-push (lihat reconcile()).
+    if (has(r, CLASS.ONLY_IN_SCM)) parts.push(r.FROM_HISTORY ? "HISTORICAL" : "ONLY IN SCM");
     if (has(r, CLASS.ONLY_IN_IOR)) parts.push("ONLY IN IOR");
     if (has(r, CLASS.ONLY_IN_DRR)) parts.push("ONLY IN DRR");
     if (has(r, CLASS.QTY_MISMATCH)) parts.push("QTY MISMATCH");
@@ -2111,7 +2194,9 @@ APP.engine = (function (C) {
       r.PRIORITY = PRIORITY[r.SEVERITY] || "-";
       var baseExplanation = explain(r, cmpLabel);
       var extraNotes = [];
-      if (r.AUTO) extraNotes.push(r.AUTO);
+      // Untuk HISTORICAL_MATCH, isi AUTO sudah dirangkai ke kalimat utama oleh
+      // explain() -- jangan diulang lagi sebagai catatan tambahan.
+      if (r.AUTO && !has(r, CLASS.HISTORICAL_MATCH)) extraNotes.push(r.AUTO);
       if (r.CROSS_NOTE) extraNotes.push(r.CROSS_NOTE);
       r.EXPLANATION = baseExplanation + extraNotes.map(function (t) { return "\n- " + t; }).join("");
       r.ACTION = actionFor(r, cmpLabel);
@@ -3414,8 +3499,9 @@ APP.exporter = (function (C, E, CASES) {
     var totalQtyScm = 0, totalQtyCmp = 0, totalCbmScm = 0, totalCbmCmp = 0, totalPkg = 0, hasPkg = false;
     var qtyMismatches = [];
     rows.forEach(function (r) {
-      totalQtyScm += r.QTY_SCM || 0; totalQtyCmp += r.QTY_CMP || 0;
-      totalCbmScm += r.CBM_SCM || 0; totalCbmCmp += r.CBM_CMP || 0;
+      // Pembanding dari histori periode lain (FROM_HISTORY) tidak ikut total periode.
+      totalQtyScm += r.QTY_SCM || 0; totalQtyCmp += r.FROM_HISTORY ? 0 : (r.QTY_CMP || 0);
+      totalCbmScm += r.CBM_SCM || 0; totalCbmCmp += r.FROM_HISTORY ? 0 : (r.CBM_CMP || 0);
       if (r.QTY_PACKAGE_SCM !== null && r.QTY_PACKAGE_SCM !== undefined) { totalPkg += r.QTY_PACKAGE_SCM; hasPkg = true; }
       if (r.CLASSES.indexOf(E.CLASS.QTY_MISMATCH) !== -1) qtyMismatches.push(r);
     });
@@ -3822,17 +3908,9 @@ async function assign(kind, name, wb, det, rawFile){
     note: RD.describe(res.fatal, res.report)
   };
   if (kind === "scm" && !res.fatal) entry.monthBreakdown = nopenPerMonth(res.rows);
-  if (kind === "ior"){
-    var hist = [];
-    for (var i=0;i<wb.SheetNames.length;i++){
-      var sn = wb.SheetNames[i].toLowerCase().trim();
-      if (sn === "inbound" || sn === "bap"){
-        var h = await RD.extract(wb, wb.SheetNames[i], SCH.IOR_HIST_SPEC, {}, null);
-        hist = hist.concat(h.rows);
-      }
-    }
-    entry.history = hist;
-  }
+  // Riwayat IOR tidak lagi diekstrak terpisah: entry.rows (IOR_SPEC) sudah
+  // memuat SO/PO/QTY/CBM/tanggal/UNLOAD lengkap dari seluruh sheet Inbound+BAP,
+  // dan run() memakainya langsung untuk histori lintas periode.
   files[kind] = entry;
 }
 
@@ -4084,13 +4162,18 @@ async function run(){
       }
       var iorRows = scopedIor.rows;
       var ori = SCH.resolveOrientation(scmA, iorRows);
+      // Riwayat lintas periode memakai SELURUH data IOR (bukan hanya yang lolos
+      // scope bulan ini), lengkap dengan SO/PO/QTY/CBM -- supaya NOPEN yang
+      // "hanya di SCM" bisa dibandingkan SUNGGUHAN terhadap data historisnya
+      // (lihat reconcile()), bukan cuma diberi tahu "ada di bulan lain". Orientasi
+      // SO/PO yang sama (ori.swap) diterapkan juga ke data historis ini, karena
+      // itu adalah properti seluruh berkas, bukan cuma periode yang lagi dilihat.
+      var iorAllOriented = iorAll;
       if (ori.swap){
         iorRows = iorRows.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
+        iorAllOriented = iorAll.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
       }
-      // Riwayat lintas periode tetap memakai data penuh (belum dibatasi),
-      // supaya NOPEN periode lain masih bisa dikenali sebagai HISTORICAL_MATCH.
-      var iorHist = (files.ior.history||[]).slice();
-      out.adidas = E.reconcile(scmA, iorRows, "IOR", E.buildHistory(iorHist.length?iorHist:iorAll), rangeA);
+      out.adidas = E.reconcile(scmA, iorRows, "IOR", E.buildHistory(iorAllOriented), rangeA);
     }
     if (files.nike){
       var drrAll = files.nike.rows;
@@ -4100,10 +4183,15 @@ async function run(){
       out.scope = Object.assign({scmMin:range.min, scmMax:range.max}, scoped);
       var ori2 = SCH.resolveOrientation(scmN, scoped.rows);
       var drrRows = scoped.rows;
+      // Sama seperti IOR di atas: histori lintas periode memakai seluruh drrAll
+      // dengan orientasi SO/PO yang sama, supaya perbandingan penuh terhadap
+      // data historis (di reconcile()) tidak salah gara-gara label SO/PO tertukar.
+      var drrAllOriented = drrAll;
       if (ori2.swap){
         drrRows = drrRows.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
+        drrAllOriented = drrAll.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
       }
-      out.nike = E.reconcile(scmN, drrRows, "DRR", E.buildHistory(drrAll), range);
+      out.nike = E.reconcile(scmN, drrRows, "DRR", E.buildHistory(drrAllOriented), range);
     }
 
     out.overall = overallStatus(out);
@@ -4203,9 +4291,11 @@ function computeQtyCbmTotals(pack, fixedBrand){
   var totalQtyScm=0, totalQtyCmp=0, totalCbmScm=0, totalCbmCmp=0, totalQtyAdj=0, totalCbmAdj=0;
   (pack ? pack.main : []).forEach(function(r){
     totalQtyScm += r.QTY_SCM || 0;
-    totalQtyCmp += r.QTY_CMP || 0;
+    // Nilai pembanding dari histori periode lain (FROM_HISTORY) tidak ikut
+    // dijumlahkan -- monitor ini menyajikan total PERIODE BERJALAN saja.
+    totalQtyCmp += r.FROM_HISTORY ? 0 : (r.QTY_CMP || 0);
     totalCbmScm += r.CBM_SCM || 0;
-    totalCbmCmp += r.CBM_CMP || 0;
+    totalCbmCmp += r.FROM_HISTORY ? 0 : (r.CBM_CMP || 0);
     var rb = r._brand || fixedBrand;
     // Jumlahkan penyesuaian dari SEMUA case NOPEN ini yang masih aktif (bukan Closed) --
     // case yang sudah di-Closed (termasuk yang di-superseded otomatis oleh evaluasi ulang
