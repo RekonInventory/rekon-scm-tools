@@ -31,7 +31,9 @@ export function createReconcileService(deps) {
     /** @returns {{result, warnings:string[], run, reevaluation}} */
     async run() {
       const t0 = performance.now();
-      const result = await engine.reconcile();
+      // "Hari ini" = tanggal kalender lokal pengguna, dinyatakan sebagai UTC 00:00 (sama dengan tanggal di data).
+      const n = new Date();
+      const result = await engine.reconcile({ today: Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) });
       const warnings = [];
       log.info("reconcile:computed", { ms: Math.round(performance.now() - t0), adidas: result.adidas ? result.adidas.main.length : 0, nike: result.nike ? result.nike.main.length : 0 });
 

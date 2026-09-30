@@ -1,4 +1,4 @@
-// GENERATED oleh inbound/dev/extract-legacy.mjs dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482).
+// Awalnya dibangkitkan dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482); sejak 2026-09-30 DIEDIT LANGSUNG (extract-legacy.mjs tidak menimpanya).
 // Orkestrasi impor + rekonsiliasi (assign/mergeReports/run) — diambil dari app-ui-logic, DOM dilepas.
 // Isi IIFE di bawah adalah salinan VERBATIM kode lama. Jangan ubah aturan bisnisnya tanpa
 // keputusan bisnis + regression test (inbound/tests/regression).
@@ -112,7 +112,8 @@ export async function assignFile(kind, name, wb, det, rawFile, onStatus) {
  * archiveCasesIfPeriodChanged() (arsip case berbasis localStorage) tidak lagi dipakai —
  * isolasi periode sekarang dicatat di server (inbound_runs + period_key pada case).
  */
-export function computeResult(files) {
+/** opts.today (Date UTC 00:00, opsional) mengaktifkan aturan "GRN / Unloading hari ini" (lihat engine.reconcile). */
+export function computeResult(files, opts) {
   function computePeriodKey(scmRows){
   var min=null, max=null;
   scmRows.forEach(function(r){
@@ -186,7 +187,7 @@ export function computeResult(files) {
         iorRows = iorRows.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
         iorAllOriented = iorAll.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
       }
-      out.adidas = E.reconcile(scmA, iorRows, "IOR", E.buildHistory(iorAllOriented), rangeA);
+      out.adidas = E.reconcile(scmA, iorRows, "IOR", E.buildHistory(iorAllOriented), rangeA, opts);
     }
     if (files.nike){
       var drrAll = files.nike.rows;
@@ -204,7 +205,7 @@ export function computeResult(files) {
         drrRows = drrRows.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
         drrAllOriented = drrAll.map(function(r){ var c=Object.assign({},r); var t=c.SO; c.SO=c.PO; c.PO=t; return c; });
       }
-      out.nike = E.reconcile(scmN, drrRows, "DRR", E.buildHistory(drrAllOriented), range);
+      out.nike = E.reconcile(scmN, drrRows, "DRR", E.buildHistory(drrAllOriented), range, opts);
     }
 
     out.overall = overallStatus(out);

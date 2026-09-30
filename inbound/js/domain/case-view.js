@@ -11,7 +11,8 @@ export const ROW_STATUS_META = {
   CLEAR: { tone: "success", icon: "checkCircle", label: "Clear" },
   ABNORMAL: { tone: "danger", icon: "warning", label: "Abnormal" },
   HISTORICAL: { tone: "info", icon: "history", label: "Historical" },
-  INFO: { tone: "info", icon: "info", label: "Info" }
+  INFO: { tone: "info", icon: "info", label: "Info" },
+  TODAY: { tone: "info", icon: "clock", label: "Hari ini" }
 };
 export const SEVERITY_META = {
   HIGH: { tone: "danger", label: "Tinggi" }, MEDIUM: { tone: "warning", label: "Sedang" },
@@ -58,6 +59,7 @@ export function rowTone(r) {
   if (r.ROW_STATUS === "CLEAR") return ROW_STATUS_META.CLEAR;
   if (r.ROW_STATUS === "HISTORICAL") return ROW_STATUS_META.HISTORICAL;
   if (r.ROW_STATUS === "ABNORMAL") return ROW_STATUS_META.ABNORMAL;
+  if (r.ROW_STATUS === "TODAY") return ROW_STATUS_META.TODAY;
   return ROW_STATUS_META.INFO;
 }
 

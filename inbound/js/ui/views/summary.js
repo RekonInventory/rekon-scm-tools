@@ -90,7 +90,7 @@ export function mountSummary(root, app) {
     const noteCount = brand === "ALL" ? app.cases.store.countFor("ADIDAS") + app.cases.store.countFor("NIKE") : app.cases.store.countFor(brand);
     const secondary = [
       ["scmonly", "Hanya di SCM", sm.onlyScm], ["cmponly", "Hanya di " + sm.cmpLabel, sm.onlyCmp], ["sopo", "SO/PO beda", sm.sopo],
-      ["historical", "Historical match", sm.historical], ["invalid", "Data tidak valid", sm.invalid],
+      ["historical", "Historical match", sm.historical], ["today", "GRN / Unloading hari ini", sm.todayEntry], ["invalid", "Data tidak valid", sm.invalid],
       ["hasnote", "Ada case", noteCount], ["nonote", "Abnormal belum ada case", null], ["open", "Case terbuka", null]
     ];
 

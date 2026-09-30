@@ -1,4 +1,4 @@
-// GENERATED oleh inbound/dev/extract-legacy.mjs dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482).
+// Awalnya dibangkitkan dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482); sejak 2026-09-30 DIEDIT LANGSUNG (extract-legacy.mjs tidak menimpanya).
 // Logika turunan hasil + case: status per finding, dashboard, filter, monitor QTY/CBM, re-evaluasi qty.
 // Isi IIFE di bawah adalah salinan VERBATIM kode lama. Jangan ubah aturan bisnisnya tanpa
 // keputusan bisnis + regression test (inbound/tests/regression).
@@ -10,7 +10,7 @@ var FILTERS = [
   ["issues","Bermasalah"], ["all","Semua"], ["clear","Clear"], ["abnormal","Abnormal"],
   ["qty","Selisih QTY"], ["cbm","Selisih CBM"], ["sopo","SO/PO Beda"],
   ["scmonly","Hanya di SCM"], ["cmponly","Hanya di IOR/DRR"],
-  ["historical","Historical Match"], ["invalid","Data Tidak Valid"],
+  ["historical","Historical Match"], ["today","GRN / Unloading hari ini"], ["invalid","Data Tidak Valid"],
   ["hasnote","Ada Catatan"], ["nonote","Belum Dicatat"], ["open","Case Terbuka"]
 ];
 
@@ -147,6 +147,7 @@ export function createFindingLogic(ctx) {
     case "scmonly": rows = rows.filter(function(r){ return has(r,E.CLASS.ONLY_IN_SCM); }); break;
     case "cmponly": rows = rows.filter(function(r){ return has(r,E.CLASS.ONLY_IN_IOR)||has(r,E.CLASS.ONLY_IN_DRR); }); break;
     case "historical": rows = rows.filter(function(r){ return has(r,E.CLASS.HISTORICAL_MATCH); }); break;
+    case "today": rows = rows.filter(function(r){ return has(r,E.CLASS.TODAY_ENTRY); }); break;
     case "invalid": rows = rows.filter(function(r){ return has(r,E.CLASS.INVALID_DATA); }); break;
     case "hasnote": rows = rows.filter(function(r){ return CASES.getAllForNopen(rowBrand(r), r.NOPEN).length>0; }); break;
     case "nonote": rows = rows.filter(function(r){ return E.isIssue(r) && CASES.getAllForNopen(rowBrand(r), r.NOPEN).length===0; }); break;

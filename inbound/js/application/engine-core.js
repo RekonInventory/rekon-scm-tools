@@ -82,10 +82,11 @@ export function createEngineCore(progress) {
     remove(kind) { files[kind] = null; return gate(files); },
     reset() { files.scm = files.ior = files.nike = null; pending.clear(); return true; },
     gate() { return gate(files); },
-    reconcile() {
+    /** opts.today (ms epoch UTC 00:00, opsional) mengaktifkan aturan "GRN / Unloading hari ini". */
+    reconcile(opts) {
       const g = gate(files);
       if (!g.ok) throw new Error(g.reason || "Berkas belum lengkap.");
-      return computeResult(files);
+      return computeResult(files, opts && opts.today ? { today: new Date(opts.today) } : undefined);
     }
   };
 }

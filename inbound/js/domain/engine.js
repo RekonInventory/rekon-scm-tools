@@ -1,7 +1,10 @@
-// GENERATED oleh inbound/dev/extract-legacy.mjs dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482).
+// Awalnya dibangkitkan dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482); sejak 2026-09-30
+// file ini DIEDIT LANGSUNG (extract-legacy.mjs tidak akan menimpanya).
 // Mesin rekonsiliasi: agregasi per NOPEN, QTY/CBM/SO-PO, dua arah, histori, klasifikasi, penjelasan.
-// Isi IIFE di bawah adalah salinan VERBATIM kode lama. Jangan ubah aturan bisnisnya tanpa
-// keputusan bisnis + regression test (inbound/tests/regression).
+// Perubahan atas kode lama (semuanya nonaktif kecuali opts.today diberikan ke reconcile()):
+//   - kelas TODAY_ENTRY: NOPEN hanya-di-satu-sisi yang tgl GRN/unloading-nya = hari ini bukan abnormal
+//     (kecuali hari ini akhir bulan). Lihat inbound/tests/regression/new-rules.mjs.
+// Selain itu isinya salinan VERBATIM kode lama; regression: inbound/tests/regression.
 
 import { C as APP } from "../core/util.js";
 
@@ -21,7 +24,8 @@ export const engine = (function (C) {
     HISTORICAL_MATCH: "HISTORICAL_MATCH",
     INVALID_DATA: "INVALID_DATA",
     DUPLICATE: "DUPLICATE",
-    MISSING_DATA: "MISSING_DATA"
+    MISSING_DATA: "MISSING_DATA",
+    TODAY_ENTRY: "TODAY_ENTRY"
   };
 
   var LABEL = {
@@ -29,7 +33,8 @@ export const engine = (function (C) {
     SO_MISMATCH: "SO berbeda", PO_MISMATCH: "PO berbeda", SO_PO_MISMATCH: "SO & PO berbeda",
     ONLY_IN_SCM: "Hanya di SCM", ONLY_IN_IOR: "Hanya di IOR", ONLY_IN_DRR: "Hanya di DRR",
     HISTORICAL_MATCH: "Ketemu di periode lain", INVALID_DATA: "Data tidak valid",
-    DUPLICATE: "Baris duplikat", MISSING_DATA: "Data tidak lengkap"
+    DUPLICATE: "Baris duplikat", MISSING_DATA: "Data tidak lengkap",
+    TODAY_ENTRY: "GRN / Unloading hari ini"
   };
 
   var SEVERITY = {
@@ -37,7 +42,7 @@ export const engine = (function (C) {
     INVALID_DATA: "HIGH",
     CBM_MISMATCH: "MEDIUM", SO_PO_MISMATCH: "MEDIUM", SO_MISMATCH: "MEDIUM",
     PO_MISMATCH: "MEDIUM", MISSING_DATA: "MEDIUM", DUPLICATE: "MEDIUM",
-    HISTORICAL_MATCH: "LOW", MATCHED: "NONE"
+    HISTORICAL_MATCH: "LOW", MATCHED: "NONE", TODAY_ENTRY: "NONE"
   };
   // PRIORITY memakai kosakata yang sama dipakai staf/supervisor (bukan istilah teknis).
   var PRIORITY = { HIGH: "HIGH", MEDIUM: "MEDIUM", LOW: "LOW", NONE: "-" };
@@ -48,7 +53,7 @@ export const engine = (function (C) {
     SO_MISMATCH: "ABNORMAL", PO_MISMATCH: "ABNORMAL", SO_PO_MISMATCH: "ABNORMAL",
     INVALID_DATA: "ABNORMAL", DUPLICATE: "ABNORMAL",
     ONLY_IN_SCM: "ABNORMAL", ONLY_IN_IOR: "ABNORMAL", ONLY_IN_DRR: "ABNORMAL", MISSING_DATA: "ABNORMAL",
-    HISTORICAL_MATCH: "HISTORICAL"
+    HISTORICAL_MATCH: "HISTORICAL", TODAY_ENTRY: "TODAY"
   };
   var SEV_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
 
@@ -181,6 +186,11 @@ export const engine = (function (C) {
     return { min: lo, max: hi };
   }
 
+  // true bila `d` (Date UTC 00:00) adalah hari terakhir dalam bulannya.
+  function isMonthEnd(d) {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).getUTCMonth() !== d.getUTCMonth();
+  }
+
   function scopeToPeriod(rows, range) {
     if (!range.min || !range.max) return { rows: rows, applied: false };
     var dated = 0;
@@ -195,7 +205,13 @@ export const engine = (function (C) {
   }
 
   /* ---------- rekonsiliasi ---------- */
-  function reconcile(scmRows, cmpRows, cmpLabel, history, scmActualRange) {
+  /**
+   * opts.today (Date UTC 00:00, opsional): bila diberikan DAN bukan akhir bulan, NOPEN yang hanya
+   * ada di satu sisi dengan tgl GRN (SCM) / unloading (pembanding) = hari ini ditandai TODAY_ENTRY
+   * (bukan abnormal). Tanpa opts.today perilaku identik dengan versi lama.
+   */
+  function reconcile(scmRows, cmpRows, cmpLabel, history, scmActualRange, opts) {
+    var todayMs = (opts && opts.today && !isMonthEnd(opts.today)) ? opts.today.getTime() : null;
     var A = aggregate(scmRows), B = aggregate(cmpRows);
     var cmpIdx = buildSoPoIndex(cmpRows); // untuk cross-check ONLY_IN_SCM: cari SO/PO di sisi comparator
     var scmIdx = buildSoPoIndex(scmRows); // untuk cross-check ONLY_IN_IOR/DRR: cari SO/PO di sisi SCM
@@ -399,6 +415,14 @@ export const engine = (function (C) {
       // dihitung sebagai abnormal. Pemeriksaan abnormal fokus hanya pada QTY, CBM,
       // SO, PO, dan NOPEN — duplikat sekadar dicatat sebagai informasi (lihat DUPES).
 
+      var todayEntry = false;
+      if (todayMs !== null && !fromHistory && classes.length && classes.every(function (c) {
+        return c === CLASS.ONLY_IN_SCM || c === CLASS.ONLY_IN_IOR || c === CLASS.ONLY_IN_DRR;
+      })) {
+        var entryDate = a && !b ? a.TGL : (!a && b ? (b.UNLOAD || b.TGL) : null);
+        if (entryDate && entryDate.getTime() === todayMs) { classes.push(CLASS.TODAY_ENTRY); todayEntry = true; autoNote = ""; }
+      }
+
       if (!classes.length) classes.push(CLASS.MATCHED);
       var primary = pickPrimary(classes);
 
@@ -510,12 +534,12 @@ export const engine = (function (C) {
 
       var scmSingle = a && a.lines === 1 ? Array.from(a.pairs)[0].split("||") : null;
       var cmpSingle = b && b.lines === 1 ? Array.from(b.pairs)[0].split("||") : null;
-      var rowStatus = a && b ? (lenient ? "INFO" : "ABNORMAL") : "ABNORMAL";
-      var issueLabel = a && b ? (lenient ? "SO/PO INFO" : "SO/PO MISMATCH") : (a ? "ONLY IN SCM" : "ONLY IN " + cmpLabel);
-      var detailExplain = lenient
+      var rowStatus = todayEntry ? "TODAY" : (a && b ? (lenient ? "INFO" : "ABNORMAL") : "ABNORMAL");
+      var issueLabel = todayEntry ? "GRN / Unloading hari ini" : (a && b ? (lenient ? "SO/PO INFO" : "SO/PO MISMATCH") : (a ? "ONLY IN SCM" : "ONLY IN " + cmpLabel));
+      var detailExplain = todayEntry ? "GRN / Unloading hari ini — belum dianggap abnormal." : lenient
         ? "Pasangan SO/PO ini hanya rincian tambahan di " + cmpLabel + " -- total QTY & CBM NOPEN sudah cocok dengan SCM, jadi bukan ketidaksesuaian."
         : "Pasangan SO/PO ini tercatat di SCM tetapi tidak ditemukan padanannya di " + cmpLabel + ".";
-      var detailAction = lenient
+      var detailAction = todayEntry ? "Pantau — cek kembali besok." : lenient
         ? "Tidak perlu tindakan -- informasi tambahan saja."
         : "Cocokkan pasangan SO/PO ini dengan data " + cmpLabel + " secara manual.";
 
@@ -539,10 +563,10 @@ export const engine = (function (C) {
           SCM_SO: scmSingle ? scmSingle[0] : "", SCM_PO: scmSingle ? scmSingle[1] : "",
           CMP_SO: p.slice(0, i), CMP_PO: p.slice(i + 2),
           STATUS_NOPEN: status, ROW_STATUS: rowStatus,
-          EXPLANATION: lenient
+          EXPLANATION: (lenient || todayEntry)
             ? detailExplain
             : "Pasangan SO/PO ini tercatat di " + cmpLabel + " tetapi tidak ditemukan padanannya di SCM.",
-          ACTION: lenient
+          ACTION: (lenient || todayEntry)
             ? detailAction
             : "Cocokkan pasangan SO/PO ini dengan data SCM secara manual."
         });
@@ -565,6 +589,8 @@ export const engine = (function (C) {
     // kenapa belum ketemu di periode berjalan, jadi diprioritaskan sebagai
     // primary di atas ONLY_IN_SCM/ONLY_IN_IOR/ONLY_IN_DRR.
     if (classes.indexOf(CLASS.HISTORICAL_MATCH) !== -1) return CLASS.HISTORICAL_MATCH;
+    // GRN / unloading hari ini: belum dianggap abnormal (lihat reconcile()).
+    if (classes.indexOf(CLASS.TODAY_ENTRY) !== -1) return CLASS.TODAY_ENTRY;
 
     var best = classes[0], bestRank = -1;
     classes.forEach(function (c) {
@@ -580,7 +606,7 @@ export const engine = (function (C) {
     return best;
   }
 
-  function isIssue(r) { return r.PRIMARY !== CLASS.MATCHED; }
+  function isIssue(r) { return r.PRIMARY !== CLASS.MATCHED && r.PRIMARY !== CLASS.TODAY_ENTRY; }
 
   /* ---------- EXPLANATION ENGINE ----------
      Menghasilkan Issue / Explanation / Action Required otomatis per baris,
@@ -621,6 +647,12 @@ export const engine = (function (C) {
 
   function explain(r, cmpLabel) {
     var lines = [];
+    if (has(r, CLASS.TODAY_ENTRY)) {
+      var d = r.TGL_SCM || r.TGL_UNLOAD;
+      var absent = has(r, CLASS.ONLY_IN_SCM) ? cmpLabel : "SCM";
+      return "GRN / Unloading hari ini" + (d ? " (" + C.fmtDate(d) + ")" : "") + " — NOPEN ini belum ada di " + absent +
+        ", belum dianggap abnormal. Bila besok masih belum ada, akan muncul sebagai temuan.";
+    }
     if (has(r, CLASS.QTY_MISMATCH)) {
       lines.push("QTY SCM " + fnum(r.QTY_SCM) + " vs " + cmpLabel + " " + fnum(r.QTY_CMP) +
         ", selisih " + fnum(Math.abs(r.QTY_DIFF)) + " carton.");
@@ -663,6 +695,7 @@ export const engine = (function (C) {
   }
 
   function actionFor(r, cmpLabel) {
+    if (has(r, CLASS.TODAY_ENTRY)) return "Pantau — cek kembali besok.";
     // Action Required otomatis berdasarkan kondisi (kolom Temuan) yang benar-benar
     // terjadi pada baris ini. Bila lebih dari satu kondisi terjadi bersamaan,
     // semua tindakan yang relevan digabung (tanpa duplikasi frasa).
@@ -701,6 +734,7 @@ export const engine = (function (C) {
     // report maupun UI menceritakan keseluruhan masalah saat lebih dari satu
     // kondisi terjadi bersamaan (mis. SO MISMATCH + QTY MISMATCH).
     var parts = [];
+    if (has(r, CLASS.TODAY_ENTRY)) return "GRN / Unloading hari ini";
     var historical = has(r, CLASS.HISTORICAL_MATCH);
     if (historical) {
       var histLabel = "HISTORICAL MATCH";
@@ -750,7 +784,7 @@ export const engine = (function (C) {
   function summarize(pack) {
     if (!pack) return null;
     var m = pack.main, s = {
-      total: m.length, clear: 0, abnormal: 0, historicalOnly: 0,
+      total: m.length, clear: 0, abnormal: 0, historicalOnly: 0, todayEntry: 0,
       qty: 0, cbm: 0, sopo: 0, onlyScm: 0, onlyCmp: 0, historical: 0, invalid: 0, duplicate: 0, missing: 0,
       qtyPkgChecked: 0, qtyPkgMatch: 0, qtyPkgDiff: 0,
       cmpLabel: pack.cmpLabel
@@ -759,6 +793,7 @@ export const engine = (function (C) {
     m.forEach(function (r) {
       if (r.ROW_STATUS === "CLEAR") s.clear++;
       else if (r.ROW_STATUS === "HISTORICAL") s.historicalOnly++;
+      else if (r.ROW_STATUS === "TODAY") s.todayEntry++;
       else s.abnormal++;
       if (r.CLASSES.indexOf(CLASS.QTY_MISMATCH) !== -1) s.qty++;
       if (r.CLASSES.indexOf(CLASS.CBM_MISMATCH) !== -1) s.cbm++;
@@ -801,7 +836,7 @@ export const engine = (function (C) {
     CLASS: CLASS, LABEL: LABEL, SEVERITY: SEVERITY, PRIORITY: PRIORITY, ROW_STATUS: ROW_STATUS,
     ISSUE_LABEL: ISSUE_LABEL,
     aggregate: aggregate, buildHistory: buildHistory, dateRange: dateRange, monthRange: monthRange,
-    scopeToPeriod: scopeToPeriod, reconcile: reconcile, summarize: summarize, isIssue: isIssue
+    scopeToPeriod: scopeToPeriod, isMonthEnd: isMonthEnd, reconcile: reconcile, summarize: summarize, isIssue: isIssue
   };
 })(APP);
 

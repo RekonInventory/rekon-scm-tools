@@ -13,7 +13,7 @@ export function createExportService(deps) {
   let exporter = null;
   async function ready() {
     await ensureXLSX();
-    if (!exporter) exporter = createWorkbookExporter(C, E, cases.store);
+    if (!exporter) exporter = createWorkbookExporter(C, E, cases.store, { mergedShipper: true });   // satu kolom SHIPPER
     return exporter;
   }
   async function history() {

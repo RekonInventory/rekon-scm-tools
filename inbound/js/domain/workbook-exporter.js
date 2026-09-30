@@ -1,9 +1,29 @@
-// GENERATED oleh inbound/dev/extract-legacy.mjs dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482).
+// Awalnya dibangkitkan dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482); sejak 2026-09-30 DIEDIT LANGSUNG (extract-legacy.mjs tidak menimpanya).
 // Penyusun workbook Excel (README, Summary, Cek Adidas/Nike, Case, Detail SOPO, Data Quality, Riwayat).
 // Isi IIFE di bawah adalah salinan VERBATIM kode lama. Jangan ubah aturan bisnisnya tanpa
 // keputusan bisnis + regression test (inbound/tests/regression).
 
-export function createWorkbookExporter(C, E, CASES) {
+/** Gabungkan nama shipper SCM + pembanding jadi satu teks: dedupe (abaikan huruf besar/kecil, spasi, tanda baca);
+ *  bila keduanya ada dan berbeda -> dipisah " / ". Dipakai kolom tunggal "SHIPPER" di export. */
+export function mergeShippers(scmText, cmpText) {
+  var seen = {}, out = [];
+  [scmText, cmpText].forEach(function (t) {
+    String(t || "").split(";").forEach(function (part) {
+      var name = part.trim();
+      if (!name) return;
+      var key = name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (!key || seen[key]) return;
+      seen[key] = 1; out.push(name);
+    });
+  });
+  return out.join(" / ");
+}
+
+/** opts.mergedShipper: true -> satu kolom SHIPPER (default false = dua kolom seperti versi lama). */
+export function createWorkbookExporter(C, E, CASES, opts) {
+  var MERGED = !!(opts && opts.mergedShipper);
+  var SKIP = {};   // penanda kolom yang dibuang (kolom shipper kedua saat MERGED)
+  function keep(arr) { return arr.filter(function (v) { return v !== SKIP; }); }
 return (function (C, E, CASES) {
   "use strict";
 
@@ -138,15 +158,17 @@ return (function (C, E, CASES) {
 
   /* ---------------- SHEET 4/5: CEK ADIDAS / CEK NIKE (detail lengkap) ---------------- */
   function mainHead(cmpLabel) {
-    return ["NOPEN", "TGL GRN (SCM)", "TGL UNLOADING (" + cmpLabel + ")",
-      "SHIPPER SCM", "SHIPPER " + cmpLabel,
+    return keep(["NOPEN", "TGL GRN (SCM)", "TGL UNLOADING (" + cmpLabel + ")",
+      MERGED ? "SHIPPER" : "SHIPPER SCM", MERGED ? SKIP : "SHIPPER " + cmpLabel,
       "SO SCM", "SO " + cmpLabel, "PO SCM", "PO " + cmpLabel, "CEK SO/PO",
       "QTY SCM", "QTY " + cmpLabel, "Selisih QTY", "CEK QTY",
       "CBM SCM", "CBM " + cmpLabel, "Selisih CBM", "CEK CBM",
       "STATUS", "ISSUE", "EXPLANATION",
-      "JUMLAH CASE", "RINGKASAN STATUS CASE"];
+      "JUMLAH CASE", "RINGKASAN STATUS CASE"]);
   }
-  var MAIN_COLS = [10, 14, 20, 26, 26, 20, 20, 20, 20, 11, 10, 10, 11, 10, 11, 11, 11, 10, 11, 22, 50, 12, 50];
+  var MAIN_COLS = MERGED
+    ? [10, 14, 20, 40, 20, 20, 20, 20, 11, 10, 10, 11, 10, 11, 11, 11, 10, 11, 22, 50, 12, 50]
+    : [10, 14, 20, 26, 26, 20, 20, 20, 20, 11, 10, 10, 11, 10, 11, 11, 11, 10, 11, 22, 50, 12, 50];
 
   // 1 NOPEN bisa punya beberapa case (lihat sheet "Case per Finding" untuk rincian
   // 1 baris/case) -- sheet ini tetap 1 baris/NOPEN (grain rekonsiliasi mentah),
@@ -156,17 +178,17 @@ return (function (C, E, CASES) {
     var counts = {};
     cs.forEach(function(c){ counts[c.status] = (counts[c.status]||0)+1; });
     var summary = CASES.STATUS.map(function(s){ return counts[s] ? (counts[s]+" "+s) : null; }).filter(Boolean).join(", ");
-    return [
+    return keep([
       sc(r.NOPEN),
       r.TGL_SCM ? C.fmtDate(r.TGL_SCM) : "",
       r.TGL_UNLOAD ? C.fmtDateRange(r.TGL_UNLOAD, r.TGL_UNLOAD_MAX) : "",
-      sc(r.SHIPPER_SCM), sc(r.SHIPPER_CMP),
+      MERGED ? sc(mergeShippers(r.SHIPPER_SCM, r.SHIPPER_CMP)) : sc(r.SHIPPER_SCM), MERGED ? SKIP : sc(r.SHIPPER_CMP),
       sc(r.SO_SCM_MARKED), sc(r.SO_CMP_MARKED), sc(r.PO_SCM_MARKED), sc(r.PO_CMP_MARKED), r.CEK_SOPO,
       r.QTY_SCM, r.QTY_CMP, r.QTY_DIFF, r.CEK_QTY,
       r.CBM_SCM, r.CBM_CMP, r.CBM_DIFF, r.CEK_CBM,
       r.ROW_STATUS, r.ISSUE, sc(r.EXPLANATION),
       cs.length, sc(summary)
-    ];
+    ]);
   }
   function aoaMain(pack, brand) {
     return [mainHead(pack.cmpLabel)].concat(pack.main.map(function (r) { return mainRow(r, brand); }));

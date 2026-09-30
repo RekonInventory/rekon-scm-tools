@@ -38,7 +38,7 @@ self.onmessage = async (e) => {
     if (op === "remove") return reply(true, core.remove(payload.kind));
     if (op === "reset") return reply(true, core.reset());
     if (op === "gate") return reply(true, core.gate());
-    if (op === "reconcile") return reply(true, core.reconcile());
+    if (op === "reconcile") return reply(true, core.reconcile(payload));
     throw new Error("Operasi tidak dikenal: " + op);
   } catch (err) {
     reply(false, { message: (err && err.message) || String(err) });

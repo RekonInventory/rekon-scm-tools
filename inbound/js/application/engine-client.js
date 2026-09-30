@@ -61,7 +61,7 @@ export function createEngineClient(onProgress) {
     if (op === "remove") return inline.remove(payload.kind);
     if (op === "reset") return inline.reset();
     if (op === "gate") return inline.gate();
-    if (op === "reconcile") return inline.reconcile();
+    if (op === "reconcile") return inline.reconcile(payload);
     throw new Error("Operasi tidak dikenal: " + op);
   }
 
@@ -74,6 +74,6 @@ export function createEngineClient(onProgress) {
     remove: (kind) => run("remove", { kind }),
     reset: () => run("reset", {}),
     gate: () => run("gate", {}),
-    reconcile: () => run("reconcile", {})
+    reconcile: (opts) => run("reconcile", opts || {})
   };
 }
