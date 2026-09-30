@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inbound Reconciliation — GLT Rekon Suite</title>
+<meta name="description" content="Workspace rekonsiliasi Inbound: SCM ↔ IOR (Adidas) dan SCM ↔ DRR (Nike).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../glt-design-system.css">
+<link rel="stylesheet" href="css/inbound.css">
+<link rel="modulepreload" href="js/main.js">
+<!-- Supabase (klasik, sinkron) lalu konfigurasi klien -> window.supa (dibaca juga oleh app shell) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/boot-supabase.js"></script>
+<script src="../glt-app-shell.js" defer></script>
+<script type="module" src="js/main.js"></script>
+</head>
+<body data-module="inbound">
+
+<a class="ib-skip" href="#ibMain">Lewati ke konten utama</a>
+
+<!-- Gerbang login (dipakai bersama app shell: #authgate + body.authed) -->
+<div id="authgate">
+  <div class="authbox ib-authbox">
+    <div class="ib-auth-brand"><span class="shell-brand-mark" aria-hidden="true"></span><b>GLT</b> Rekon Suite</div>
+    <h1 class="ib-auth-title">Inbound Reconciliation</h1>
+    <p class="ib-auth-sub">Masuk untuk mengakses data bersama tim.</p>
+    <form id="authForm" novalidate>
+      <div class="gs-field">
+        <label class="gs-label" for="authEmail">Nama pengguna</label>
+        <input class="gs-input" type="text" id="authEmail" autocomplete="username" autocapitalize="none" spellcheck="false" required aria-describedby="authErr">
+      </div>
+      <div class="gs-field">
+        <label class="gs-label" for="authPass">Kata sandi</label>
+        <input class="gs-input" type="password" id="authPass" autocomplete="current-password" required aria-describedby="authErr">
+      </div>
+      <button class="gs-btn gs-btn--primary gs-btn--block" type="submit" id="authSubmit">Masuk</button>
+      <div class="gs-error-text" id="authErr" role="alert" aria-live="assertive"></div>
+    </form>
+    <p class="ib-auth-foot">Lupa kata sandi? Hubungi admin untuk reset.</p>
+  </div>
+</div>
+
+<!-- Kait untuk app shell: status sinkron + tombol akun asli (disembunyikan; shell meneruskan klik ke sini) -->
+<span class="acct" hidden>
+  <span id="syncStatus"></span>
+  <span id="acctEmail"></span>
+  <button type="button" id="btnChangePassword">Ganti Password</button>
+  <button type="button" id="btnSignOut">Keluar</button>
+</span>
+
+<main id="ibMain" class="ib-app" tabindex="-1" aria-labelledby="ibPageTitle">
+  <header id="ibHeader" class="ib-header"></header>
+  <div id="ibSession" class="ib-session-wrap" hidden></div>
+
+  <section id="ibImport" class="gs-card ib-card" aria-labelledby="ibImportTitle"></section>
+
+  <section id="ibSummaryRegion" class="ib-region" aria-label="Ringkasan rekonsiliasi">
+    <div id="ibSummary" class="ib-summary"></div>
+  </section>
+
+  <section id="ibFindingsRegion" class="ib-region" aria-labelledby="ibFindingsTitle">
+    <div id="ibFindings" class="gs-card ib-card" hidden></div>
+  </section>
+
+  <footer class="ib-foot">
+    <span>Rekonsiliasi Inbound · QTY harus sama persis · toleransi CBM 0,5 · pemeriksaan dua arah + penelusuran histori.</span>
+    <a href="../Rekonsiliasi_Inbound.html">Versi lama</a>
+  </footer>
+</main>
+
+<noscript><p class="ib-noscript">Aplikasi ini membutuhkan JavaScript.</p></noscript>
+</body>
+</html>
