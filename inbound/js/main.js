@@ -70,7 +70,7 @@ const exporter = createExportService({ cases });
 const backup = createBackupService({ cases, whoAmI: () => me().name, periodKey: () => (store.get().result || {}).periodKey || null });
 
 app.session = session;   // untuk dialog diagnostik & harness uji
-app.logic = createFindingLogic({ result: () => store.get().result, view: () => store.get().view, cases: cases.store });
+app.logic = createFindingLogic({ result: () => store.get().result, view: () => store.get().view, cases: cases.store, includeHistoryInTotals: true });
 
 function publishSession() {
   const row = session.current();

@@ -19,9 +19,13 @@ export function mergeShippers(scmText, cmpText) {
   return out.join(" / ");
 }
 
-/** opts.mergedShipper: true -> satu kolom SHIPPER (default false = dua kolom seperti versi lama). */
+/** opts.mergedShipper: true -> satu kolom SHIPPER (default false = dua kolom seperti versi lama).
+ *  opts.includeHistoryInTotals: true -> ringkasan total ikut menjumlahkan pembanding dari periode lain + catatannya.
+ *  opts.cbmCaseColumns: true -> sheet "Case per Finding" punya kolom CBM Expected/Actual/Selisih. */
 export function createWorkbookExporter(C, E, CASES, opts) {
   var MERGED = !!(opts && opts.mergedShipper);
+  var WITH_HIST = !!(opts && opts.includeHistoryInTotals);
+  var CBM_COLS = !!(opts && opts.cbmCaseColumns);
   var SKIP = {};   // penanda kolom yang dibuang (kolom shipper kedua saat MERGED)
   function keep(arr) { return arr.filter(function (v) { return v !== SKIP; }); }
 return (function (C, E, CASES) {
@@ -232,9 +236,13 @@ return (function (C, E, CASES) {
      Memenuhi kebutuhan "1 NOPEN dengan beberapa finding harus menghasilkan beberapa
      baris case saat export" -- sheet "Cek Adidas/Cek Nike" di atas tetap 1 baris/NOPEN
      (grain rekonsiliasi mentah), sheet inilah yang jadi rincian per-case-nya. */
-  var CASE_SHEET_HEAD = ["NOPEN", "Case ID", "Case Type", "Status", "Severity", "PIC",
-    "Qty Expected", "Qty Actual", "Selisih Qty", "Remark", "Dibuat", "Diperbarui", "Closed At", "Closed By"];
-  var CASE_SHEET_COLS = [12, 14, 16, 12, 10, 20, 12, 12, 12, 50, 18, 18, 18, 20];
+  var CASE_SHEET_HEAD = CBM_COLS
+    ? ["NOPEN", "Case ID", "Case Type", "Status", "Severity", "PIC",
+      "Qty Expected", "Qty Actual", "Selisih Qty", "CBM Expected", "CBM Actual", "Selisih CBM", "Remark", "Dibuat", "Diperbarui", "Closed At", "Closed By"]
+    : ["NOPEN", "Case ID", "Case Type", "Status", "Severity", "PIC",
+      "Qty Expected", "Qty Actual", "Selisih Qty", "Remark", "Dibuat", "Diperbarui", "Closed At", "Closed By"];
+  var CASE_SHEET_COLS = CBM_COLS ? [12, 14, 16, 12, 10, 20, 12, 12, 12, 12, 12, 12, 50, 18, 18, 18, 20] : [12, 14, 16, 12, 10, 20, 12, 12, 12, 50, 18, 18, 18, 20];
+  function blank(v) { return v === null || v === undefined ? "" : v; }
   function aoaCaseSheet(brand) {
     var rows = [CASE_SHEET_HEAD];
     var all = CASES.all();
@@ -242,14 +250,15 @@ return (function (C, E, CASES) {
       .filter(function(c){ return c.brand === brand; })
       .sort(function(a, b) { return String(a.nopen) < String(b.nopen) ? -1 : String(a.nopen) > String(b.nopen) ? 1 : (a.id<b.id?-1:1); })
       .forEach(function (c) {
-        rows.push([
+        rows.push(keep([
           sc(c.nopen), displayCaseId(c.id), CASES.CASE_TYPE_LABEL[c.caseType]||c.caseType, c.status, sc(c.severity), sc(c.pic),
           c.qtyExpected===null||c.qtyExpected===undefined?"":c.qtyExpected,
           c.qtyActual===null||c.qtyActual===undefined?"":c.qtyActual,
           c.qtyDifference===null||c.qtyDifference===undefined?"":c.qtyDifference,
+          CBM_COLS ? blank(c.cbmExpected) : SKIP, CBM_COLS ? blank(c.cbmActual) : SKIP, CBM_COLS ? blank(c.cbmDifference) : SKIP,
           sc(c.remark), C.fmtStamp(c.createdAt), C.fmtStamp(c.updatedAt),
           c.closedAt?C.fmtStamp(c.closedAt):"", sc(c.closedBy||"")
-        ]);
+        ]));
       });
     return rows;
   }
@@ -335,11 +344,18 @@ return (function (C, E, CASES) {
     rows.forEach(function (r, idx) { if (!nopenRowIdx.has(r.NOPEN)) nopenRowIdx.set(r.NOPEN, idx); });
 
     var totalQtyScm = 0, totalQtyCmp = 0, totalCbmScm = 0, totalCbmCmp = 0, totalPkg = 0, hasPkg = false;
+    var histPeriods = {};
     var qtyMismatches = [];
     rows.forEach(function (r) {
       // Pembanding dari histori periode lain (FROM_HISTORY) tidak ikut total periode.
-      totalQtyScm += r.QTY_SCM || 0; totalQtyCmp += r.FROM_HISTORY ? 0 : (r.QTY_CMP || 0);
-      totalCbmScm += r.CBM_SCM || 0; totalCbmCmp += r.FROM_HISTORY ? 0 : (r.CBM_CMP || 0);
+      totalQtyScm += r.QTY_SCM || 0; totalQtyCmp += r.FROM_HISTORY && !WITH_HIST ? 0 : (r.QTY_CMP || 0);
+      totalCbmScm += r.CBM_SCM || 0; totalCbmCmp += r.FROM_HISTORY && !WITH_HIST ? 0 : (r.CBM_CMP || 0);
+      if (WITH_HIST && r.FROM_HISTORY) {
+        var d = r.TGL_UNLOAD ? (r.TGL_UNLOAD instanceof Date ? r.TGL_UNLOAD : new Date(r.TGL_UNLOAD)) : null;
+        var pk = d ? C.BULAN_PANJANG[d.getUTCMonth()] + " " + d.getUTCFullYear() : "periode lain";
+        var hp = histPeriods[pk] || (histPeriods[pk] = { n: 0, qty: 0, cbm: 0 });
+        hp.n++; hp.qty += r.QTY_CMP || 0; hp.cbm += r.CBM_CMP || 0;
+      }
       if (r.QTY_PACKAGE_SCM !== null && r.QTY_PACKAGE_SCM !== undefined) { totalPkg += r.QTY_PACKAGE_SCM; hasPkg = true; }
       if (r.CLASSES.indexOf(E.CLASS.QTY_MISMATCH) !== -1) qtyMismatches.push(r);
     });
@@ -352,6 +368,10 @@ return (function (C, E, CASES) {
     resume.push(["Total CBM SCM", C.r3(totalCbmScm), "Total CBM " + cmpLabel, C.r3(totalCbmCmp), "Selisih CBM", C.r3(totalCbmScm - totalCbmCmp)]);
     resume.push(hasPkg ? ["Total Package (SCM)", C.r3(totalPkg)] : ["Total Package (SCM)", "-"]);
     resume.push(["Jumlah NOPEN", rows.length]);
+    Object.keys(histPeriods).forEach(function (pk) {
+      var hp = histPeriods[pk];
+      resume.push(["Catatan", "Total " + cmpLabel + " termasuk " + C.r3(hp.qty) + " ctn / " + C.r3(hp.cbm) + " CBM dari " + cmpLabel + " periode " + pk + " (" + hp.n + " NOPEN, status HISTORICAL)"]);
+    });
     resume.push([]);
 
     var hyperlinkTargets = []; // {resumeRowIdx, nopen}

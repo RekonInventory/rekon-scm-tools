@@ -39,7 +39,8 @@ export function createReconcileService(deps) {
 
       // (2) re-evaluasi qty — logika verbatim; store diubah dulu, lalu dipersist berurutan
       cases.setContext({ periodKey: result.periodKey || null, runId: null });
-      const intents = planQtyReevaluation(result, cases.store);
+      // cbm: penyesuaian CBM ikut dievaluasi ulang; historyAvailable: data di IOR/DRR periode lain = data sudah ada.
+      const intents = planQtyReevaluation(result, cases.store, { cbm: true, historyAvailable: true });
       let reevaluation = { total: 0, failed: [] };
       if (intents.length) {
         reevaluation = await cases.persistIntents(intents);

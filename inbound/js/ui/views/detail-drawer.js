@@ -120,7 +120,12 @@ export function createDetailDrawer(app) {
     saveBtn.addEventListener("click", async () => {
       const qtyAdjVal = parseFloat(qa.value) || 0;
       const fields = { remark: remark.value, pic: me, status, qtyAdj: qtyAdjVal, cbmAdj: parseFloat(ca.value) || 0, qtyAdjNote: qn.value, cbmAdjNote: cn.value, actionTaken: act.value };
-      if (row.CLASSES.indexOf(E.CLASS.ONLY_IN_SCM) !== -1) fields.qtyExpected = qtyAdjVal || null;   // aturan lama (item 10-15)
+      if (row.CLASSES.indexOf(E.CLASS.ONLY_IN_SCM) !== -1) {
+        // data pembanding belum ada: catat nilai yang ditunggu supaya penyesuaian dilepas otomatis
+        // begitu data terbaru tersedia (QTY = aturan lama item 10-15; CBM = aturan baru, sama persis)
+        fields.qtyExpected = qtyAdjVal || null;
+        fields.cbmExpected = fields.cbmAdj || null;
+      }
       const context = { caseType: typeSel.value || "OTHER", issueType: row.PRIMARY, severity: row.SEVERITY };
       saveBtn.disabled = true; saveBtn.classList.add("gs-btn--loading"); saveBtn.setAttribute("aria-busy", "true");
       const res = await actions.saveCase({ caseId: c ? c.id : null, brand: current.brand, nopen: current.nopen, fields, context,

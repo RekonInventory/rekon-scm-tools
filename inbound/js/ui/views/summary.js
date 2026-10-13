@@ -22,7 +22,14 @@ export function mountSummary(root, app) {
       def.meta ? h("span", { class: "gs-kpi-meta" }, def.meta) : null);
   }
 
-  function totalsCard(title, t) {
+  // Keterangan bagian total pembanding yang berasal dari IOR/DRR periode lain (FROM_HISTORY).
+  function histLines(t, which, cmpLabel) {
+    if (!t.history) return null;
+    return t.history.periods.map((p) => h("div", { class: "ib-mon-hist" }, icon("history", 12),
+      "termasuk " + C.fmtNum(which === "qty" ? p.qty : p.cbm, which === "qty" ? 0 : 3) + " dari " + cmpLabel + " periode " + p.label + " (" + p.count + " NOPEN)"));
+  }
+
+  function totalsCard(title, t, cmpLabel) {
     const qtyOk = Math.abs(t.adjQtyDiff) <= C.QTY_TOL, cbmOk = Math.abs(t.adjCbmDiff) <= C.CBM_TOL;
     const line = (label, v, dec, tone) => h("div", { class: "ib-mon-line" }, h("span", null, label), h("span", { class: ["gs-num", tone ? "is-" + tone : null] }, C.fmtNum(v, dec)));
     return h("div", { class: "ib-mon-card" },
@@ -30,12 +37,12 @@ export function mountSummary(root, app) {
       h("div", { class: ["ib-mon-banner", qtyOk && cbmOk ? "is-ok" : "is-bad"] }, icon(qtyOk && cbmOk ? "checkCircle" : "warning", 14),
         qtyOk && cbmOk ? "QTY & CBM sesuai" : [!qtyOk ? "QTY selisih " + C.fmtNum(t.adjQtyDiff) : null, !cbmOk ? "CBM selisih " + C.fmtNum(t.adjCbmDiff, 3) : null].filter(Boolean).join(" · ")),
       h("div", { class: "ib-mon-block" }, h("h5", null, "QTY"),
-        line("Total SCM", t.totalQtyScm, 0), line("Total pembanding", t.totalQtyCmp, 0),
+        line("Total SCM", t.totalQtyScm, 0), line("Total pembanding", t.totalQtyCmp, 0), histLines(t, "qty", cmpLabel),
         line("Selisih awal", t.rawQtyDiff, 0, Math.abs(t.rawQtyDiff) > C.QTY_TOL ? "bad" : "ok"),
         t.totalQtyAdj ? line("Total penyesuaian", t.totalQtyAdj, 0, "adj") : null,
         line("Selisih akhir", t.adjQtyDiff, 0, qtyOk ? "ok" : "bad")),
       h("div", { class: "ib-mon-block" }, h("h5", null, "CBM"),
-        line("Total SCM", t.totalCbmScm, 3), line("Total pembanding", t.totalCbmCmp, 3),
+        line("Total SCM", t.totalCbmScm, 3), line("Total pembanding", t.totalCbmCmp, 3), histLines(t, "cbm", cmpLabel),
         line("Selisih awal", t.rawCbmDiff, 3, Math.abs(t.rawCbmDiff) > C.CBM_TOL ? "bad" : "ok"),
         t.totalCbmAdj ? line("Total penyesuaian", t.totalCbmAdj, 3, "adj") : null,
         line("Selisih akhir", t.adjCbmDiff, 3, cbmOk ? "ok" : "bad")));
@@ -101,6 +108,10 @@ export function mountSummary(root, app) {
         C.fmtDate(sc.lo) + " – " + C.fmtDate(sc.hi) + ": " + C.fmtNum(sc.after) + " baris dibandingkan, " + C.fmtNum(sc.before - sc.after) + " di luar periode diabaikan.");
     });
     (R.warnings || []).forEach((w) => notes.push(w));
+    // Catatan: bagian total pembanding (QTY & CBM) yang diambil dari IOR/DRR periode lain.
+    if (tot.history) tot.history.periods.forEach((p) => notes.push("Total " + sm.cmpLabel + " termasuk " + C.fmtNum(p.qty) + " ctn / " + C.fmtNum(p.cbm, 3) +
+      " CBM dari " + sm.cmpLabel + " periode " + p.label + " — " + p.count + " NOPEN tercatat di SCM periode ini tetapi di " + sm.cmpLabel + " periode " + p.label +
+      " (" + p.nopens.slice(0, 10).map((n) => n.replace(/^[A-Z]+:/, "")).join(", ") + (p.count > 10 ? ", …" : "") + "). Filter \"Historical Match\" untuk melihat barisnya."));
     const qualityWarn = (R.quality || []).filter((q) => q.severity !== "VALID");
     const monId = "ibMonitorBody";
 
@@ -128,9 +139,9 @@ export function mountSummary(root, app) {
           icon(monitorOpen ? "chevronDown" : "chevronRight", 14), "Monitor total QTY & CBM",
           h("span", { class: "ib-monitor-hint" }, "angka akhir sudah memperhitungkan penyesuaian manual case aktif")),
         h("div", { class: "ib-monitor-grid", id: monId, hidden: !monitorOpen },
-          R.adidas ? totalsCard("SCM ↔ IOR (Adidas)", logic.computeQtyCbmTotals(R.adidas, "ADIDAS")) : null,
-          R.nike ? totalsCard("SCM ↔ DRR (Nike)", logic.computeQtyCbmTotals(R.nike, "NIKE")) : null,
-          R.adidas && R.nike ? totalsCard("Gabungan", logic.computeQtyCbmTotals(logic.combinedPack(), null)) : null)));
+          R.adidas ? totalsCard("SCM ↔ IOR (Adidas)", logic.computeQtyCbmTotals(R.adidas, "ADIDAS"), "IOR") : null,
+          R.nike ? totalsCard("SCM ↔ DRR (Nike)", logic.computeQtyCbmTotals(R.nike, "NIKE"), "DRR") : null,
+          R.adidas && R.nike ? totalsCard("Gabungan", logic.computeQtyCbmTotals(logic.combinedPack(), null), "IOR/DRR") : null)));
   }
 
   store.subscribe(["result", "view", "caseRev", "session"], render);

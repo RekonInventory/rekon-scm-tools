@@ -1,4 +1,5 @@
-// GENERATED oleh inbound/dev/extract-legacy.mjs dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482).
+// Awalnya dibangkitkan dari Rekonsiliasi_Inbound.html (sha256 28ae4b4a2cc1f482); sejak 2026-10-01 DIEDIT LANGSUNG (extract-legacy.mjs tidak menimpanya).
+// Tambahan: cbmExpected/cbmActual/cbmDifference (hanya disimpan bila terisi, supaya case lama tetap identik).
 // Model case + audit (id <brand>|<nopen>|<seq>, status, diff->audit).
 // Isi IIFE di bawah adalah salinan VERBATIM kode lama. Jangan ubah aturan bisnisnya tanpa
 // keputusan bisnis + regression test (inbound/tests/regression).
@@ -136,7 +137,7 @@ return (function (C) {
     var numOr0 = function(v){ var n = typeof v === "number" ? v : parseFloat(v); return isFinite(n) ? n : 0; };
     var numOrNull = function(v){ if (v===null||v===undefined||v==="") return null; var n = typeof v === "number" ? v : parseFloat(v); return isFinite(n) ? n : null; };
     var ct = CASE_TYPE.indexOf(rec.caseType) !== -1 ? rec.caseType : "OTHER";
-    return {
+    var out = {
       id: key,
       brand: C.S(rec.brand) || parts.brand || "",
       nopen: C.S(rec.nopen) || parts.nopen || "",
@@ -154,12 +155,17 @@ return (function (C) {
       qtyExpected: numOrNull(rec.qtyExpected),
       qtyActual: numOrNull(rec.qtyActual),
       qtyDifference: numOrNull(rec.qtyDifference),
+      cbmExpected: numOrNull(rec.cbmExpected),
+      cbmActual: numOrNull(rec.cbmActual),
+      cbmDifference: numOrNull(rec.cbmDifference),
       createdAt: C.S(rec.createdAt) || now,
       updatedAt: C.S(rec.updatedAt) || now,
       closedAt: rec.closedAt ? C.S(rec.closedAt) : null,
       closedBy: C.S(rec.closedBy).slice(0, 60),
       audit: audit
     };
+    ["cbmExpected", "cbmActual", "cbmDifference"].forEach(function (k) { if (out[k] === null) delete out[k]; });
+    return out;
   }
 
   function persist() {
@@ -263,6 +269,9 @@ return (function (C) {
     if (fields.qtyExpected !== undefined) rec.qtyExpected = (fields.qtyExpected===null||fields.qtyExpected==="") ? null : (parseFloat(fields.qtyExpected));
     if (fields.qtyActual !== undefined) rec.qtyActual = (fields.qtyActual===null||fields.qtyActual==="") ? null : (parseFloat(fields.qtyActual));
     if (fields.qtyDifference !== undefined) rec.qtyDifference = (fields.qtyDifference===null||fields.qtyDifference==="") ? null : (parseFloat(fields.qtyDifference));
+    if (fields.cbmExpected !== undefined) rec.cbmExpected = (fields.cbmExpected===null||fields.cbmExpected==="") ? null : (parseFloat(fields.cbmExpected));
+    if (fields.cbmActual !== undefined) rec.cbmActual = (fields.cbmActual===null||fields.cbmActual==="") ? null : (parseFloat(fields.cbmActual));
+    if (fields.cbmDifference !== undefined) rec.cbmDifference = (fields.cbmDifference===null||fields.cbmDifference==="") ? null : (parseFloat(fields.cbmDifference));
     if (context) {
       if (context.caseType) rec.caseType = context.caseType;
       if (context.issueType) rec.issueType = context.issueType;

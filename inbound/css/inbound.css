@@ -257,6 +257,7 @@ kbd{
 .ib-mon-banner.is-bad{ background:var(--danger-bg); color:#991B1B; }
 .ib-mon-line{ display:flex; justify-content:space-between; font-size:var(--gs-text-sm); padding:1px 0; }
 .ib-mon-line .is-adj{ color:var(--info); }
+.ib-mon-hist{ display:flex; align-items:center; gap:5px; font-size:var(--gs-text-xs); color:#155E75; background:var(--info-bg); border-radius:var(--gs-radius-sm); padding:2px 6px; margin:1px 0 3px; }
 .ib-empty-hero{ padding:40px 20px; }
 
 /* ---------- findings ---------- */

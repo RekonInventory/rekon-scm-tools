@@ -11,6 +11,7 @@ export function caseToRow(rec, extra) {
     qty_adj: Number(rec.qtyAdj) || 0, cbm_adj: Number(rec.cbmAdj) || 0,
     qty_adj_note: rec.qtyAdjNote || "", cbm_adj_note: rec.cbmAdjNote || "",
     qty_expected: num(rec.qtyExpected), qty_actual: num(rec.qtyActual), qty_difference: num(rec.qtyDifference),
+    cbm_expected: num(rec.cbmExpected), cbm_actual: num(rec.cbmActual), cbm_difference: num(rec.cbmDifference),
     created_at: rec.createdAt || new Date().toISOString(), updated_at: rec.updatedAt || new Date().toISOString(),
     closed_at: rec.closedAt || null, closed_by: rec.closedBy || "",
     audit: Array.isArray(rec.audit) ? rec.audit : [],
@@ -25,6 +26,8 @@ export function rowToCase(r) {
     pic: r.pic, status: r.status, remark: r.remark, actionTaken: r.action_taken,
     qtyAdj: r.qty_adj, cbmAdj: r.cbm_adj, qtyAdjNote: r.qty_adj_note, cbmAdjNote: r.cbm_adj_note,
     qtyExpected: r.qty_expected, qtyActual: r.qty_actual, qtyDifference: r.qty_difference,
+    cbmExpected: r.cbm_expected === undefined ? null : r.cbm_expected, cbmActual: r.cbm_actual === undefined ? null : r.cbm_actual,
+    cbmDifference: r.cbm_difference === undefined ? null : r.cbm_difference,
     createdAt: r.created_at, updatedAt: r.updated_at, closedAt: r.closed_at, closedBy: r.closed_by,
     audit: Array.isArray(r.audit) ? r.audit : []
   };

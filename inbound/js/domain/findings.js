@@ -24,6 +24,31 @@ var ABN_PATTERNS = {
 
 export { FILTERS, ABN_PATTERNS };
 
+/** Label periode data pembanding historis sebuah baris FROM_HISTORY (bulan tgl unloading/tgl data). */
+export function historyPeriodLabel(r) {
+  var d = r.TGL_UNLOAD || null;
+  if (!d) return "periode lain";
+  d = d instanceof Date ? d : new Date(d);
+  return C.BULAN_PANJANG[d.getUTCMonth()] + " " + d.getUTCFullYear();
+}
+function addHistory(acc, r) {
+  var k = historyPeriodLabel(r);
+  var g = acc[k] || (acc[k] = { label: k, count: 0, qty: 0, cbm: 0, nopens: [] });
+  g.count++; g.qty += r.QTY_CMP || 0; g.cbm += r.CBM_CMP || 0;
+  if (g.nopens.length < 20) g.nopens.push((r._brand ? r._brand + ":" : "") + r.NOPEN);
+}
+/** Ringkas rincian histori: {count, qty, cbm, periods:[{label,count,qty,cbm,nopens}]} atau null. */
+export function historySummary(acc) {
+  var periods = Object.keys(acc).map(function (k) { var g = acc[k]; g.qty = C.r3(g.qty); g.cbm = C.r3(g.cbm); return g; });
+  if (!periods.length) return null;
+  return {
+    count: periods.reduce(function (s, g) { return s + g.count; }, 0),
+    qty: C.r3(periods.reduce(function (s, g) { return s + g.qty; }, 0)),
+    cbm: C.r3(periods.reduce(function (s, g) { return s + g.cbm; }, 0)),
+    periods: periods
+  };
+}
+
 export function abnormalStatusEquals(a, b){
   a = a || {}; b = b || {};
   return !!a.OPEN===!!b.OPEN && !!a["IN PROGRESS"]===!!b["IN PROGRESS"] && !!a.CLOSED===!!b.CLOSED;
@@ -35,6 +60,9 @@ export function abnormalStatusEquals(a, b){
  */
 export function createFindingLogic(ctx) {
   var CASES = ctx.cases;
+  // ctx.includeHistoryInTotals (aplikasi baru = true): nilai pembanding dari IOR/DRR periode lain
+  // (FROM_HISTORY) IKUT dijumlahkan ke total pembanding monitor, dan rinciannya dikembalikan
+  // di `history` supaya dashboard bisa memberi catatan periodenya. Default false = perilaku lama.
   function RESULT_() { return ctx.result(); }
   function view_() { return ctx.view(); }
 
@@ -74,13 +102,15 @@ export function createFindingLogic(ctx) {
 }
   function computeQtyCbmTotals(pack, fixedBrand){
   var totalQtyScm=0, totalQtyCmp=0, totalCbmScm=0, totalCbmCmp=0, totalQtyAdj=0, totalCbmAdj=0;
+  var histByPeriod = {};
   (pack ? pack.main : []).forEach(function(r){
     totalQtyScm += r.QTY_SCM || 0;
     // Nilai pembanding dari histori periode lain (FROM_HISTORY) tidak ikut
     // dijumlahkan -- monitor ini menyajikan total PERIODE BERJALAN saja.
-    totalQtyCmp += r.FROM_HISTORY ? 0 : (r.QTY_CMP || 0);
+    totalQtyCmp += r.FROM_HISTORY && !ctx.includeHistoryInTotals ? 0 : (r.QTY_CMP || 0);
     totalCbmScm += r.CBM_SCM || 0;
-    totalCbmCmp += r.FROM_HISTORY ? 0 : (r.CBM_CMP || 0);
+    totalCbmCmp += r.FROM_HISTORY && !ctx.includeHistoryInTotals ? 0 : (r.CBM_CMP || 0);
+    if (r.FROM_HISTORY && ctx.includeHistoryInTotals) addHistory(histByPeriod, r);
     var rb = r._brand || fixedBrand;
     // Jumlahkan penyesuaian dari SEMUA case NOPEN ini yang masih aktif (bukan Closed) --
     // case yang sudah di-Closed (termasuk yang di-superseded otomatis oleh evaluasi ulang
@@ -95,6 +125,7 @@ export function createFindingLogic(ctx) {
   return {
     totalQtyScm:totalQtyScm, totalQtyCmp:totalQtyCmp, rawQtyDiff:rawQtyDiff, totalQtyAdj:C.r3(totalQtyAdj), adjQtyDiff:C.r3(rawQtyDiff-totalQtyAdj),
     totalCbmScm:totalCbmScm, totalCbmCmp:totalCbmCmp, rawCbmDiff:rawCbmDiff, totalCbmAdj:C.r3(totalCbmAdj), adjCbmDiff:C.r3(rawCbmDiff-totalCbmAdj)
+  , history: ctx.includeHistoryInTotals ? historySummary(histByPeriod) : undefined
   };
 }
 
@@ -225,10 +256,16 @@ export function createFindingLogic(ctx) {
 }
 
 /**
- * Re-evaluasi penyesuaian qty "belum tersedia" (verbatim reevaluateQtyAdjustments).
+ * Re-evaluasi penyesuaian "belum tersedia" setelah data terbaru diunggah.
+ * Tanpa opts = verbatim versi lama (QTY saja; data histori dianggap belum tersedia).
+ * opts.cbm = true              -> penyesuaian CBM (cbmExpected) ikut dievaluasi ulang, sama seperti QTY.
+ * opts.historyAvailable = true -> baris yang pembandingnya ditemukan di IOR/DRR periode lain
+ *                                 (FROM_HISTORY) dianggap "data sudah ada" -> penyesuaian dilepas
+ *                                 (monitor kini menjumlahkan data histori; bila tidak dilepas akan dobel).
  * `pushCaseToSupabase(rec, isNew)` = callback persistensi dari application layer.
  */
-export function reevaluateQtyAdjustments(out, CASES, pushCaseToSupabase) {
+export function reevaluateQtyAdjustments(out, CASES, pushCaseToSupabase, opts) {
+  opts = opts || {};
   function run_(out){
   ["adidas","nike"].forEach(function(key){
     var pack = out[key];
@@ -240,29 +277,53 @@ export function reevaluateQtyAdjustments(out, CASES, pushCaseToSupabase) {
     Object.keys(all).forEach(function(caseId){
       var c = all[caseId];
       if (c.brand !== brand || c.status === "CLOSED") return;
-      if (c.qtyExpected === null || c.qtyExpected === undefined) return;
+      var hasQ = !(c.qtyExpected === null || c.qtyExpected === undefined);
+      var hasC = !!opts.cbm && !(c.cbmExpected === null || c.cbmExpected === undefined);
+      if (!hasQ && !hasC) return;
       var row = rowsByNopen[c.nopen];
       if (!row) return; // NOPEN tidak muncul di run terbaru (mis. beda periode) -- jangan diutak-atik
-      if (row.CLASSES.indexOf(E.CLASS.ONLY_IN_SCM) !== -1) return; // item 14: masih belum tersedia, pertahankan
+      // item 14: masih belum tersedia, pertahankan (kecuali ditemukan di histori & opts.historyAvailable)
+      if (row.CLASSES.indexOf(E.CLASS.ONLY_IN_SCM) !== -1 && !(opts.historyAvailable && row.FROM_HISTORY)) return;
 
-      var expected = c.qtyExpected;
+      var expected = hasQ ? c.qtyExpected : null;
       var actual = row.QTY_CMP || 0;
-      var diff = C.r3(expected - actual);
-      var sesuai = Math.abs(diff) <= (C.QTY_TOL||0);
+      var diff = hasQ ? C.r3(expected - actual) : 0;
+      var sesuai = !hasQ || Math.abs(diff) <= (C.QTY_TOL||0);
+      var expectedC = hasC ? c.cbmExpected : null;
+      var actualC = C.r3(row.CBM_CMP || 0);
+      var diffC = hasC ? C.r3(expectedC - actualC) : 0;
+      var sesuaiC = !hasC || Math.abs(diffC) <= (C.CBM_TOL||0);
 
-      CASES.save(caseId, brand, c.nopen, { status: "CLOSED", qtyAdj: 0, qtyActual: actual }, { caseType: c.caseType });
-      CASES.appendAudit(caseId, "sistem", sesuai
+      var fields = { status: "CLOSED" };
+      if (hasQ) { fields.qtyAdj = 0; fields.qtyActual = actual; }
+      if (hasC) { fields.cbmAdj = 0; fields.cbmActual = actualC; }
+      CASES.save(caseId, brand, c.nopen, fields, { caseType: c.caseType });
+      if (hasQ) CASES.appendAudit(caseId, "sistem", sesuai
         ? ("Penyesuaian Qty sebelumnya sebesar " + expected + " sudah tersedia pada data terbaru sebesar " + actual + ".")
         : ("Penyesuaian Qty sebelumnya sebesar " + expected + " telah dihapus karena data terbaru sudah tersedia. Pada data terbaru ditemukan Qty sebesar " + actual + " sehingga masih terdapat selisih Qty sebesar " + Math.abs(diff) + "."));
+      if (hasC) CASES.appendAudit(caseId, "sistem", sesuaiC
+        ? ("Penyesuaian CBM sebelumnya sebesar " + expectedC + " sudah tersedia pada data terbaru sebesar " + actualC + ".")
+        : ("Penyesuaian CBM sebelumnya sebesar " + expectedC + " telah dihapus karena data terbaru sudah tersedia. Pada data terbaru ditemukan CBM sebesar " + actualC + " sehingga masih terdapat selisih CBM sebesar " + Math.abs(diffC) + "."));
+      if (opts.historyAvailable && row.FROM_HISTORY) CASES.appendAudit(caseId, "sistem",
+        "Data pembanding NOPEN ini ditemukan di " + pack.cmpLabel + " periode " + historyPeriodLabel(row) + " (bukan periode berjalan).");
       pushCaseToSupabase(CASES.get(caseId), false);
 
+      var seq = CASES.parseKey(caseId).seq;
       if (!sesuai){
         var newId = CASES.nextCaseId(brand, c.nopen);
         CASES.save(newId, brand, c.nopen, {
           status: "OPEN", pic: c.pic,
-          remark: "Selisih Qty ditemukan otomatis setelah data terbaru tersedia (lanjutan case " + c.nopen + "-" + CASES.parseKey(caseId).seq + ").",
+          remark: "Selisih Qty ditemukan otomatis setelah data terbaru tersedia (lanjutan case " + c.nopen + "-" + seq + ").",
           qtyExpected: expected, qtyActual: actual, qtyDifference: diff
         }, { caseType: "QTY_DIFFERENCE", issueType: row.PRIMARY, severity: row.SEVERITY });
+      }
+      if (!sesuaiC){
+        var newIdC = CASES.nextCaseId(brand, c.nopen);
+        CASES.save(newIdC, brand, c.nopen, {
+          status: "OPEN", pic: c.pic,
+          remark: "Selisih CBM ditemukan otomatis setelah data terbaru tersedia (lanjutan case " + c.nopen + "-" + seq + ").",
+          cbmExpected: expectedC, cbmActual: actualC, cbmDifference: diffC
+        }, { caseType: "CBM_DIFFERENCE", issueType: row.PRIMARY, severity: row.SEVERITY });
       }
     });
   });

@@ -10,7 +10,7 @@ import { reevaluateQtyAdjustments } from "../domain/findings.js";
 /**
  * @returns {Array<{id:string, isNew:boolean}>} urutan perubahan case yang harus dipersist.
  */
-export function planQtyReevaluation(result, store) {
+export function planQtyReevaluation(result, store, opts) {
   const intents = [];
   const tracked = Object.create(store);
   tracked.save = function (caseId, brand, nopen, fields, context) {
@@ -20,6 +20,6 @@ export function planQtyReevaluation(result, store) {
   };
   reevaluateQtyAdjustments(result, tracked, function (rec, isNew) {
     if (rec) intents.push({ id: rec.id, isNew: !!isNew });
-  });
+  }, opts);
   return intents;
 }
