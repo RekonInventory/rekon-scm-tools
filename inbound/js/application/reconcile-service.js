@@ -40,7 +40,8 @@ export function createReconcileService(deps) {
       // (2) re-evaluasi qty — logika verbatim; store diubah dulu, lalu dipersist berurutan
       cases.setContext({ periodKey: result.periodKey || null, runId: null });
       // cbm: penyesuaian CBM ikut dievaluasi ulang; historyAvailable: data di IOR/DRR periode lain = data sudah ada.
-      const intents = planQtyReevaluation(result, cases.store, { cbm: true, historyAvailable: true });
+      // skipFollowUps: hanya penyesuaian aktif (adj != 0) -- case lanjutan tidak ditutup/dibuat ulang tiap run.
+      const intents = planQtyReevaluation(result, cases.store, { cbm: true, historyAvailable: true, skipFollowUps: true });
       let reevaluation = { total: 0, failed: [] };
       if (intents.length) {
         reevaluation = await cases.persistIntents(intents);

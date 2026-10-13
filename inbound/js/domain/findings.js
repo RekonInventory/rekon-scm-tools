@@ -262,6 +262,10 @@ export function createFindingLogic(ctx) {
  * opts.historyAvailable = true -> baris yang pembandingnya ditemukan di IOR/DRR periode lain
  *                                 (FROM_HISTORY) dianggap "data sudah ada" -> penyesuaian dilepas
  *                                 (monitor kini menjumlahkan data histori; bila tidak dilepas akan dobel).
+ * opts.skipFollowUps = true    -> hanya case yang penyesuaiannya masih aktif (qtyAdj != 0 untuk QTY,
+ *                                 cbmAdj != 0 untuk CBM) yang dievaluasi ulang. Tanpa opsi ini case
+ *                                 lanjutan QTY_DIFFERENCE/CBM_DIFFERENCE (menyimpan qtyExpected/cbmExpected,
+ *                                 adj 0) ditutup & dibuat lanjutan baru di SETIAP run (-02, -03, -04, ...).
  * `pushCaseToSupabase(rec, isNew)` = callback persistensi dari application layer.
  */
 export function reevaluateQtyAdjustments(out, CASES, pushCaseToSupabase, opts) {
@@ -279,6 +283,11 @@ export function reevaluateQtyAdjustments(out, CASES, pushCaseToSupabase, opts) {
       if (c.brand !== brand || c.status === "CLOSED") return;
       var hasQ = !(c.qtyExpected === null || c.qtyExpected === undefined);
       var hasC = !!opts.cbm && !(c.cbmExpected === null || c.cbmExpected === undefined);
+      if (opts.skipFollowUps) {
+        // hanya penyesuaian yang masih aktif; case lanjutan (qtyAdj/cbmAdj 0) tidak dievaluasi lagi
+        if (!Number(c.qtyAdj)) hasQ = false;
+        if (!Number(c.cbmAdj)) hasC = false;
+      }
       if (!hasQ && !hasC) return;
       var row = rowsByNopen[c.nopen];
       if (!row) return; // NOPEN tidak muncul di run terbaru (mis. beda periode) -- jangan diutak-atik

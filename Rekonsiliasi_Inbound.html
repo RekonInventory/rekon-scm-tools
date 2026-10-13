@@ -4093,6 +4093,9 @@ function reevaluateQtyAdjustments(out){
       var c = all[caseId];
       if (c.brand !== brand || c.status === "CLOSED") return;
       if (c.qtyExpected === null || c.qtyExpected === undefined) return;
+      // hanya penyesuaian yang masih aktif; case lanjutan (qtyAdj 0) tidak dievaluasi lagi
+      // (tanpa ini case lanjutan ditutup & dibuat lanjutan baru di setiap run: -02, -03, -04, ...)
+      if (!Number(c.qtyAdj)) return;
       var row = rowsByNopen[c.nopen];
       if (!row) return; // NOPEN tidak muncul di run terbaru (mis. beda periode) -- jangan diutak-atik
       if (row.CLASSES.indexOf(E.CLASS.ONLY_IN_SCM) !== -1) return; // item 14: masih belum tersedia, pertahankan
