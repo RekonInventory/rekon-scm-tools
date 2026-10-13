@@ -530,8 +530,12 @@ tbody tr:hover{background:var(--surface-muted)}
         <input type="text" id="search" placeholder="Cari PEB, AJU, job, atau nama shipper…">
         <button class="btn btn-ghost btn-sm" id="btnSaveRun">Simpan run</button>
         <button class="btn btn-ghost btn-sm" id="btnRunHist">Riwayat run</button>
-        <button class="btn btn-ghost btn-sm" id="btnXlsx">Unduh hasil (.xlsx)</button>
-        <button class="btn btn-ghost btn-sm" id="btnCsv">Unduh hasil (.csv)</button>
+        <button class="btn btn-ghost btn-sm" id="btnXlsx" title="Seluruh baris hasil, tanpa memperhatikan filter">Unduh semua (.xlsx)</button>
+        <button class="btn btn-ghost btn-sm" id="btnXlsxFilter" title="Hanya baris yang sedang tampil sesuai pencarian, status, filter kolom, dan urutan">Unduh hasil filter (.xlsx)</button>
+        <button class="btn btn-ghost btn-sm" id="btnCsv" title="Hanya baris yang sedang tampil">Unduh hasil filter (.csv)</button>
+        <button class="btn btn-ghost btn-sm" id="btnNoteTpl" title="Template Excel berisi baris yang sedang tampil, untuk mengisi catatan per PEB secara massal">Template catatan</button>
+        <button class="btn btn-ghost btn-sm" id="btnNoteUp" title="Unggah template catatan yang sudah diisi; tampil pratinjau dulu">Upload catatan</button>
+        <input type="file" id="fileNotes" accept=".xlsx,.xlsm,.xls" hidden>
       </div>
       <div class="runhistpanel" id="runHistPanel">
         <h3>Run tersimpan</h3>
@@ -1604,8 +1608,30 @@ function renderTable(reset){
 }
 
 /* ================= Ekspor ================= */
-function exportData(){
-  return visibleRows().map(r=>({
+/* Semua baris hasil (tanpa filter), mengikuti urutan kolom yang sedang aktif */
+function allRowsSorted(){
+  return state.sortKey ? state.rows.slice().sort(cmpRows) : state.rows.slice();
+}
+const LABEL_FILTER_KOLOM = { peb:'PEB', category:'Kategori', aju:'No. AJU', job:'Job No.', grn:'Tgl GRN (SCM)',
+  gout:'Tgl Keluar (SCM)', arr:'Tgl Datang (Gudang)', shipInv:'Shipper (Inventory)', shipScm:'Shipper (SCM)',
+  qtyInvMin:'Qty Inventory min', qtyInvMax:'Qty Inventory maks', qtyScmMin:'Qty SCM min', qtyScmMax:'Qty SCM maks',
+  diffMin:'Selisih min', diffMax:'Selisih maks', src:'Sumber', status:'Status (kolom)', notes:'Catatan' };
+function deskripsiFilter(){
+  const d = [];
+  const q = document.getElementById('search').value.trim();
+  if(q) d.push(['Pencarian', q]);
+  if(state.filter.size) d.push(['Status (legenda)', Array.from(state.filter).map(k=>STATUS[k] ? STATUS[k].label : k).join(', ')]);
+  Object.keys(state.colFilters).forEach(k=>{
+    const v = state.colFilters[k];
+    if(v==='' || v==null) return;
+    d.push([LABEL_FILTER_KOLOM[k] || k, k==='status' && STATUS[v] ? STATUS[v].label : v]);
+  });
+  if(state.refDate) d.push(['Tanggal acuan', state.refDate]);
+  if(state.sortKey) d.push(['Urut', (LABEL_FILTER_KOLOM[state.sortKey] || state.sortKey) + (state.sortDir==='desc' ? ' (turun)' : ' (naik)')]);
+  return d;
+}
+function exportData(rows){
+  return (rows || visibleRows()).map(r=>({
     'PEB': r.peb,
     'Kategori': r.category,
     'No. AJU': r.aju,
@@ -1704,14 +1730,38 @@ function switchTab(tab){
 document.getElementById('tabBtnRecon').onclick = ()=>switchTab('recon');
 document.getElementById('tabBtnList').onclick  = ()=>switchTab('list');
 
+/* Unduh semua: seluruh baris hasil, apa pun filter yang sedang aktif */
 document.getElementById('btnXlsx').onclick = ()=>{
+  if(!state.rows.length){ gltToast('Belum ada hasil untuk diunduh.', 'warn'); return; }
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportData()), 'Hasil Cek');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportData(allRowsSorted())), 'Hasil Cek');
   const c = counts();
   const sum = Object.keys(STATUS).map(k=>({'Status':STATUS[k].label,'Jumlah PEB':c[k]}));
   sum.push({'Status':'TOTAL','Jumlah PEB':state.rows.length});
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), 'Ringkasan');
   XLSX.writeFile(wb, `Hasil_Cek_PEB_${stamp()}.xlsx`);
+};
+/* Unduh hasil filter: hanya baris yang sedang tampil (pencarian, legenda status, filter kolom, urutan) */
+document.getElementById('btnXlsxFilter').onclick = ()=>{
+  const rows = visibleRows();
+  if(!rows.length){ gltToast('Tidak ada baris yang cocok dengan filter saat ini.', 'warn'); return; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportData(rows)), 'Hasil Filter');
+  const per = {};
+  rows.forEach(r=>{ per[r.status] = (per[r.status]||0) + 1; });
+  const fil = deskripsiFilter();
+  const L = [['EKSPOR HASIL FILTER'], [],
+    ['Jumlah baris', rows.length + ' dari ' + state.rows.length],
+    ['Diekspor oleh', currentUser ? displayNameFromUser(currentUser) : ''],
+    ['Waktu', new Date().toLocaleString('id-ID')], [],
+    ['Filter yang dipakai']];
+  if(fil.length) fil.forEach(x=>L.push(x)); else L.push(['(tanpa filter)', 'semua baris']);
+  L.push([], ['Jumlah per status (baris yang diekspor)']);
+  Object.keys(STATUS).forEach(k=>{ if(per[k]) L.push([STATUS[k].label, per[k]]); });
+  const info = XLSX.utils.aoa_to_sheet(L);
+  info['!cols'] = [{wch:26}, {wch:60}];
+  XLSX.utils.book_append_sheet(wb, info, 'Info Filter');
+  XLSX.writeFile(wb, `Hasil_Cek_PEB_FILTER_${stamp()}.xlsx`);
 };
 document.getElementById('btnCsv').onclick = ()=>{
   const ws = XLSX.utils.json_to_sheet(exportData());
@@ -1802,6 +1852,91 @@ document.getElementById('btnReset').onclick = ()=>{
   document.getElementById('runDate').textContent='—';
   const m=document.getElementById('statusMsg'); m.className='status-msg';
 };
+
+/* ================= Bulk upload catatan per PEB =================
+   Template = baris yang sedang tampil (filter aktif). Kolom yang dibaca hanya
+   "Catatan"; PEB dipakai untuk mencocokkan (cadangan: Job No. / No. AJU yang unik).
+   Catatan kosong = tidak berubah; isi "-" = hapus catatan. Ada pratinjau sebelum
+   diterapkan. Catatan baru tersimpan di server setelah run disimpan. */
+function unduhTemplateCatatan(){
+  const rows = visibleRows();
+  if(!rows.length){ gltToast('Tidak ada baris yang tampil untuk dijadikan template.', 'warn'); return; }
+  const L = [['PEB','Kategori','No. AJU','Job No.','Status','Qty Inventory','Qty SCM','Selisih','Catatan']];
+  rows.forEach(r=>L.push([r.peb, r.category || '', r.aju || '', r.job || '', STATUS[r.status] ? STATUS[r.status].label : r.status,
+    r.qtyInv == null ? '' : r.qtyInv, r.qtyScm == null ? '' : r.qtyScm, r.diff == null ? '' : r.diff, state.notes.get(r.peb) || '']));
+  const P = [['PETUNJUK BULK UPLOAD CATATAN INVENTORY'], [],
+    ['1', 'Isi kolom Catatan di sheet CATATAN. Kolom lain hanya informasi, jangan diubah.'],
+    ['2', 'Baris dicocokkan lewat PEB. Kalau PEB kosong, dipakai Job No. atau No. AJU (harus unik).'],
+    ['3', 'Catatan kosong = catatan lama tidak berubah. Isi tanda - (minus) saja untuk menghapus catatan.'],
+    ['4', 'Sebelum diterapkan tampil pratinjau. Sesudahnya klik Simpan run supaya catatan tersimpan di server.'],
+    [], ['Diunduh', new Date().toLocaleString('id-ID')], ['Jumlah baris', rows.length]];
+  const wb = GLTBulk.tulisWorkbook(XLSX, [
+    {nama:'CATATAN', baris:L, lebar:[16, 10, 30, 18, 22, 12, 12, 10, 50]},
+    {nama:'PETUNJUK', baris:P, lebar:[12, 110]}]);
+  GLTBulk.unduhXlsx(XLSX, wb, `Template_Catatan_Inventory_${stamp()}.xlsx`);
+}
+async function unggahCatatan(file){
+  if(!state.rows.length){ gltToast('Jalankan pengecekan atau buka run dulu, lalu unggah template.', 'warn'); return; }
+  let t;
+  try{ t = await GLTBulk.bacaTemplate(file, XLSX, {sheet:['CATATAN','TEMPLATE'], wajib:['Catatan']}); }
+  catch(e){ gltToast(e.message || String(e), 'err', 10000); return; }
+  const K = n => GLTBulk.cariKolom(t.header, n), V = GLTBulk.nilai;
+  const kol = {peb:K(['PEB','PEB / NOPEN','NOPEN']), job:K(['Job No.','Job No','Job']), aju:K(['No. AJU','No AJU','AJU']), cat:K('Catatan')};
+  const byPeb = new Map(), byJob = new Map(), byAju = new Map();
+  const tambah = (m, k, r)=>{ if(!k) return; const x = String(k).trim().toUpperCase(); if(!m.has(x)) m.set(x, []); m.get(x).push(r); };
+  state.rows.forEach(r=>{ tambah(byPeb, r.peb, r); tambah(byJob, r.job, r); tambah(byAju, r.aju, r); });
+  const rencana = [], dipakai = new Set();
+  t.baris.forEach(row=>{
+    const p = {baris:row._baris, peb:V(row, kol.peb), aksi:'', pesan:''};
+    rencana.push(p);
+    const teks = V(row, kol.cat);
+    if(!teks){ p.aksi = 'LEWAT'; p.pesan = 'catatan kosong'; p._kelas = 'skip'; return; }
+    let kand = p.peb ? (byPeb.get(p.peb.toUpperCase()) || []) : [];
+    if(!p.peb){
+      const j = V(row, kol.job), a = V(row, kol.aju);
+      kand = j ? (byJob.get(j.toUpperCase()) || []) : (a ? (byAju.get(a.toUpperCase()) || []) : []);
+    }
+    if(kand.length !== 1){
+      p.aksi = 'GALAT'; p._kelas = 'bad';
+      p.pesan = kand.length ? 'cocok dengan ' + kand.length + ' baris, isi PEB supaya pasti' : 'PEB / Job / AJU tidak ditemukan di hasil';
+      return;
+    }
+    const r = kand[0]; p.peb = r.peb;
+    if(dipakai.has(r.peb)){ p.aksi = 'GALAT'; p._kelas = 'bad'; p.pesan = 'PEB ini muncul lebih dari sekali di berkas'; return; }
+    dipakai.add(r.peb);
+    const lama = state.notes.get(r.peb) || '';
+    const baru = teks === '-' ? '' : teks;
+    if(lama === baru){ p.aksi = 'SAMA'; p.pesan = 'tidak ada perubahan'; p._kelas = 'skip'; return; }
+    p.aksi = !baru ? 'HAPUS' : (lama ? 'UBAH' : 'BARU');
+    p.pesan = (lama ? lama : '(kosong)') + ' → ' + (baru ? baru : '(dihapus)');
+    p.baru = baru;
+  });
+  const n = a => rencana.filter(x=>x.aksi===a).length;
+  const kerja = rencana.filter(x=>x.aksi==='BARU' || x.aksi==='UBAH' || x.aksi==='HAPUS');
+  const ok = await GLTBulk.pratinjau({
+    judul:'Pratinjau bulk upload catatan — ' + file.name,
+    ringkasan:[{label:'catatan baru', nilai:n('BARU'), kelas:'ok'}, {label:'diubah', nilai:n('UBAH'), kelas:'ok'},
+      {label:'dihapus', nilai:n('HAPUS'), kelas:n('HAPUS') ? 'warn' : ''}, {label:'tanpa perubahan', nilai:n('SAMA')},
+      {label:'dilewati (kosong)', nilai:n('LEWAT')}, {label:'galat', nilai:n('GALAT'), kelas:n('GALAT') ? 'bad' : ''}],
+    catatan:'Baris galat tidak diterapkan. Sesudah diterapkan, klik Simpan run supaya tersimpan di server.',
+    kolom:[{label:'Baris', key:'baris'}, {label:'PEB', key:'peb'}, {label:'Aksi', key:'aksi'}, {label:'Perubahan / pesan', key:'pesan'}],
+    baris:rencana.filter(x=>x.aksi!=='LEWAT').concat(rencana.filter(x=>x.aksi==='LEWAT')),
+    okLabel:'Terapkan ' + kerja.length + ' catatan', okDisabled:!kerja.length
+  });
+  if(!ok) return;
+  kerja.forEach(x=>{ if(x.baru) state.notes.set(x.peb, x.baru); else state.notes.delete(x.peb); });
+  renderTable(true);
+  const simpan = await gltConfirm(kerja.length + ' catatan diterapkan di layar. Simpan run ke server sekarang supaya kolega ikut melihatnya?',
+    {okLabel:'Simpan run', cancelLabel:'Nanti'});
+  if(simpan) await saveRun();
+}
+document.getElementById('btnNoteTpl').onclick = unduhTemplateCatatan;
+document.getElementById('btnNoteUp').onclick = ()=>document.getElementById('fileNotes').click();
+document.getElementById('fileNotes').addEventListener('change', e=>{
+  const f = e.target.files[0]; e.target.value = '';
+  if(f) unggahCatatan(f);
+});
 </script>
+<script src="glt-bulk-upload.js"></script>
 </body>
 </html>

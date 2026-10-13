@@ -192,6 +192,7 @@ body{
 .bar i.warn{background:var(--warn)}
 .bar i.bad{background:var(--stamp)}
 .bar i.batal{background:#9AA3A0}
+.bar i.today{background:#38BDF8}
 .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:9px;font-size:12px;color:var(--ink-2)}
 .legend span{display:flex;align-items:center;gap:6px}
 .legend span.lg{
@@ -207,6 +208,7 @@ body{
 .legend em.warn{background:var(--warn)}
 .legend em.bad{background:var(--stamp)}
 .legend em.batal{background:#9AA3A0}
+.legend em.today{background:#38BDF8}
 .legend em.nota{background:#FFDF7A;border:1px solid var(--warn)}
 .legend b{font-family:var(--mono);font-weight:500}
 
@@ -425,6 +427,8 @@ td.sel.nol{color:var(--seal);font-weight:400}
 .ex.adj .val{color:var(--indigo)}
 .ex.anom{border-left-color:var(--ink-3)}
 .ex.batal{border-left-color:#9AA3A0}
+.ex.today{border-left-color:#38BDF8}
+.ex.today .val{color:#0369A1}
 .ex.nol{opacity:.55}
 
 /* ---------- daftar sederhana di panel ---------- */
@@ -738,6 +742,7 @@ td.adj:hover{background:#DBEAFE}
 .pill.bad{background:var(--danger-bg);color:#B91C1C}
 .pill.batal{background:var(--surface-muted);color:var(--text-secondary)}
 .pill.match-adj{background:var(--primary-soft);color:var(--primary-dark)}
+.pill.today{background:#E0F2FE;color:#0369A1}
 .notecount{font-family:var(--mono);font-size:11.5px;color:var(--text-muted)}
 .tablewrap::-webkit-scrollbar{width:10px;height:10px}
 .tablewrap::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:var(--gs-radius-pill);border:3px solid var(--surface)}
@@ -928,6 +933,9 @@ td.adj:hover{background:#DBEAFE}
         <option value="kosong">Belum ada catatan</option>
         <option value="adj">Ada penyesuaian</option>
         <option value="noadj">Tanpa penyesuaian</option>
+        <option value="case">Ada case</option>
+        <option value="caseaktif">Case aktif (Open / In Progress)</option>
+        <option value="caseclosed">Case closed semua</option>
       </select>
       <span class="count" id="cnt"></span>
       <span class="notecount" id="noteCount"></span>
@@ -937,9 +945,13 @@ td.adj:hover{background:#DBEAFE}
         <button class="btn" id="btnRestore" title="Periksa lalu pulihkan dari berkas cadangan">Muat cadangan</button>
         <button class="btn" id="btnData" title="Bersihkan sesi, kosongkan catatan run, hapus run, atau hapus seluruh riwayat">Kelola data</button>
         <button class="btn" id="expTab">Ekspor tabel ini</button>
+        <button class="btn" id="expFilter" title="Ekspor hanya baris yang sedang tampil sesuai pencarian, filter, dan urutan tabel">Ekspor hasil filter</button>
+        <button class="btn ob-bulk" id="btnBulkTpl" data-judul="Unduh template Excel berisi baris yang sedang tampil, untuk diisi catatan/case secara massal">Template case</button>
+        <button class="btn ob-bulk" id="btnBulkUp" data-judul="Unggah template yang sudah diisi; tampil pratinjau dulu sebelum disimpan">Upload case</button>
         <button class="btn primary" id="expAll">Ekspor semua ke Excel</button>
       </div>
       <input type="file" id="fileBackup" class="hidden" accept=".json">
+      <input type="file" id="fileBulk" class="hidden" accept=".xlsx,.xlsm,.xls">
     </div>
     <div class="tablewrap" id="tablewrap"></div>
   </div>
@@ -1651,6 +1663,76 @@ async function bacaSemua(daftar, tick){
   return {docs, nike, adidas, scm:(scm.size?scm:null), jadwal, peran};
 }
 
+/* ---- nomor CLP per baris ----
+   Adidas: kolom CLP di IOR (sheet Outbound). Nike: kolom CLP NO di jadwal K+N (sheet REPORT).
+   SCM: kolom PO NUMBER di Outbound SCM. Semua nilai unik digabung dan sumbernya dicatat.
+   Hanya untuk ditampilkan; tidak ikut menentukan status. */
+const LABEL_SUMBER_CLP = {ADIDAS:"IOR", NIKE:"Recap Nike", JADWAL:"Jadwal K+N", SCM:"SCM"};
+function kumpulClp(){
+  const nilai = new Set(), sumber = [];
+  return {
+    tambah(v, src){
+      if(v===null || v===undefined) return;
+      const t = String(v).trim();
+      if(!t || ERR_XL.test(t)) return;
+      nilai.add(t);
+      if(sumber.indexOf(src) < 0) sumber.push(src);
+    },
+    hasil(){ return {clp:gabung(nilai), clpSumber:sumber.map(s=>LABEL_SUMBER_CLP[s]||s).join(" + ")}; }
+  };
+}
+// entri jadwal K+N untuk satu container: pilih yang tanggal tibanya paling dekat dengan acuan
+function clpJadwal(list, ref){
+  const ada = (list||[]).filter(x=>x.clp!==null && x.clp!==undefined && String(x.clp).trim());
+  if(!ada.length) return null;
+  if(!ref) return ada[0].clp;
+  return ada.slice().sort((a,b)=>
+    Math.abs(days(a.tiba||ref, ref)) - Math.abs(days(b.tiba||ref, ref)))[0].clp;
+}
+function scmTerdekat(scm, nopen, ref){
+  if(!scm || !scm.byNopen || !nopen) return null;
+  const kand = scm.byNopen.get(nopen) || [];
+  if(!kand.length) return null;
+  if(!ref) return kand[0];
+  return kand.slice().sort((a,b)=>Math.abs(days(a.tgl,ref))-Math.abs(days(b.tgl,ref)))[0];
+}
+/* q: {ctr (sudah dinormalkan), nopen, ref, grp, src, scmRec}; S: {nike, adidas, jadwal, scm}.
+   grp/src = kelompok laporan yang sudah dipilih (kalau ada); scmRec = baris SCM yang sudah
+   dipasangkan (null = tidak ada, undefined = cari sendiri lewat nopen). */
+function cariClp(q, S){
+  S = S || {};
+  const k = kumpulClp();
+  let grp = q.grp, src = q.src;
+  if(!grp && q.ctr){
+    if(S.adidas && S.adidas.has(q.ctr)){ src = "ADIDAS"; [grp] = pickGroup(S.adidas.get(q.ctr), q.ref); }
+    else if(S.nike && S.nike.has(q.ctr)){ src = "NIKE"; [grp] = pickGroup(S.nike.get(q.ctr), q.ref); }
+  }
+  if(grp) grp.forEach(x=>k.tambah(x.clp, src));
+  if(S.jadwal && q.ctr && S.jadwal.has(q.ctr)) k.tambah(clpJadwal(S.jadwal.get(q.ctr), q.ref), "JADWAL");
+  const sv = q.scmRec === undefined ? scmTerdekat(S.scm, q.nopen, q.ref) : q.scmRec;
+  if(sv && sv.clp) sv.clp.forEach(x=>k.tambah(x, "SCM"));
+  else if(S.scm && S.scm.byCtr && q.ctr && S.scm.byCtr.has(q.ctr)) S.scm.byCtr.get(q.ctr).forEach(x=>k.tambah(x, "SCM"));
+  return k.hasil();
+}
+
+/* ---- outbound hari ini ----
+   Baris tanpa padanan yang tanggalnya HARI INI belum tentu selisih: sumber lain biasanya
+   baru diperbarui besok. Baris seperti itu diberi status OUTBOUND HARI INI (tidak dihitung
+   sebagai ketidaksesuaian). Pengecualian: pada hari terakhir bulan, data harus sudah
+   lengkap untuk tutup bulan, jadi aturan ini TIDAK berlaku dan statusnya tetap seperti biasa.
+   Tanpa opsi.today (pemanggilan lama) perilakunya identik dengan versi sebelumnya. */
+const OUTBOUND_HARI_INI = "OUTBOUND HARI INI";
+const akhirBulan = d => addD(d,1).getMonth() !== d.getMonth();
+function statusHariIni(today, ...tgl){
+  if(!today || akhirBulan(today)) return false;
+  const t = key(today);
+  return tgl.some(d => d && key(d) === t);
+}
+function ketHariIni(today, apa){
+  return "Outbound hari ini (" + fmtD(today) + ") — " + apa +
+         ". Bukan ketidaksesuaian; periksa lagi pada pengecekan berikutnya";
+}
+
 /* ====================== rekon ====================== */
 function pickGroup(rows, ref){
   const g = new Map();
@@ -1664,7 +1746,9 @@ function pickGroup(rows, ref){
   return [best,true];
 }
 
-function rekonA(docs, nike, adidas, tol, tolHari, jadwal){
+function rekonA(docs, nike, adidas, tol, tolHari, jadwal, opsi){
+  opsi = opsi || {};
+  const S = {nike, adidas, jadwal, scm:opsi.scm || null};
   const rows = docs.slice().sort((a,b)=>(a.tglDaftar-b.tglDaftar)||String(a.nomorDaftar).localeCompare(String(b.nomorDaftar)))
   .map(d=>{
     const wajar = d.tglStuffing && d.tglDaftar && Math.abs(days(d.tglStuffing,d.tglDaftar))<120;
@@ -1679,13 +1763,16 @@ function rekonA(docs, nike, adidas, tol, tolHari, jadwal){
                sumber:src||"\u2014", aju:d.aju, file:d.file};
     const dibatalkan = !!(d.batalBaris && d.batalBaris === d.totalBaris);
     if(!grp){
+      // container kosong tidak akan pernah cocok, jadi tidak ikut aturan outbound hari ini
+      const hariIni = !dibatalkan && !!d.ctr && statusHariIni(opsi.today, d.tglDaftar, d.tglStuffing);
       Object.assign(o,{tglLap:null,tglKeluar:null,tglStuffLap:null,selisihHari:null,
         qtyLap:null,selisih:null,baris:0,shipper:"",peb:"",
-        status: dibatalkan ? "PEMBATALAN" : "TIDAK ADA DI LAPORAN",
+        status: dibatalkan ? "PEMBATALAN" : (hariIni ? OUTBOUND_HARI_INI : "TIDAK ADA DI LAPORAN"),
         keterangan: dibatalkan
           ? catatanBatal(d, "kemasan", d.batalKemasan)
+          : (hariIni ? ketHariIni(opsi.today, "container belum ada di laporan Adidas maupun Nike")
           : (d.ctr ? "Nomor container tidak ada di laporan Adidas maupun Nike"
-                   : "Nomor container kosong di data P3BET, tidak bisa dicocokkan")});
+                   : "Nomor container kosong di data P3BET, tidak bisa dicocokkan"))});
     }else{
       const qty = grp.reduce((s,x)=>s+x.qty,0);
       const outs = uniq(grp.map(x=>x.out&&key(x.out))).sort();
@@ -1724,6 +1811,7 @@ function rekonA(docs, nike, adidas, tol, tolHari, jadwal){
         peb:uniq(grp.map(x=>x.peb)).sort().join("; ").slice(0,150),
         status, keterangan:kap(ket.join(" \u00b7 "))});
     }
+    Object.assign(o, cariClp({ctr:d.ctr, nopen:d.nopen, ref, grp, src}, S));
     return o;
   });
 
@@ -1744,8 +1832,11 @@ function rekonA(docs, nike, adidas, tol, tolHari, jadwal){
         if(lo && (dt<lo || dt>hi)) return;   // periode mengikuti rentang tgl daftar P3BET
         const outs = uniq(v.map(x=>x.out&&key(x.out))).sort();
         // container laporan Nike yang tidak ada di P3BET ditelusuri ke jadwal K+N
-        let ketBalik = "Container ini keluar di laporan "+nama+" pada "+fmtD(dt)+
-                       " tapi tidak ada dokumen P3BET-nya";
+        const hariIni = statusHariIni(opsi.today, dt);
+        let ketBalik = hariIni
+          ? ketHariIni(opsi.today, "container keluar di laporan "+nama+" tapi dokumen P3BET-nya belum ada")
+          : "Container ini keluar di laporan "+nama+" pada "+fmtD(dt)+
+            " tapi tidak ada dokumen P3BET-nya";
         if(jadwal && jadwal.size && jadwal.has(c)){
           const j = jadwal.get(c);
           const dekat = j.slice().sort((a,b)=>
@@ -1770,7 +1861,8 @@ function rekonA(docs, nike, adidas, tol, tolHari, jadwal){
           qtyLap:v.reduce((s,x)=>s+x.qty,0), selisih:null, baris:v.length,
           shipper:uniq(v.map(x=>x.shipper)).sort().join("; ").slice(0,150),
           peb:uniq(v.map(x=>x.peb)).sort().join("; ").slice(0,150),
-          status:"TIDAK ADA DI P3BET", keterangan:ketBalik});
+          status: hariIni ? OUTBOUND_HARI_INI : "TIDAK ADA DI P3BET", keterangan:ketBalik,
+          ...cariClp({ctr:c, nopen:null, ref:dt, grp:v, src:nama}, S)});
       });
     });
   });
@@ -1780,7 +1872,10 @@ function rekonA(docs, nike, adidas, tol, tolHari, jadwal){
   return {rows:semua};
 }
 
-function rekonB(docs, scm, tol, margin){
+function rekonB(docs, scm, tol, margin, opsi){
+  opsi = opsi || {};
+  const S = {nike:opsi.nike || null, adidas:opsi.adidas || null, jadwal:opsi.jadwal || null, scm};
+  const ctrPertama = set => normCtr(Array.from(set||[]).sort()[0] || "");
   const per = new Map();
   docs.forEach(d=>{
     const k = d.nopen+"|"+key(d.tglDaftar);
@@ -1817,11 +1912,13 @@ function rekonB(docs, scm, tol, margin){
                  batalSatuan08:g.batalBaris ? g.batalSatuan : 0,
                  aju:Array.from(g.aju).sort().join("; ").slice(0,60), file:g.file};
       if(!s){
+        const hariIni = !dibatalkan && statusHariIni(opsi.today, g.tglDaftar);
         Object.assign(o,{job:"",gi:null,tglScm:null,qtyScm:null,selisih:null,baris:0,uomScm:"",exportir:"",
-          status: dibatalkan ? "PEMBATALAN" : "TIDAK ADA DI SCM",
+          status: dibatalkan ? "PEMBATALAN" : (hariIni ? OUTBOUND_HARI_INI : "TIDAK ADA DI SCM"),
           keterangan: dibatalkan
             ? catatanBatal(g, "satuan", g.batalSatuan)
-            : "Nomor daftar ini tidak ada di Outbound SCM"});
+            : (hariIni ? ketHariIni(opsi.today, "nomor daftar ini belum ada di Outbound SCM")
+                       : "Nomor daftar ini tidak ada di Outbound SCM")});
       }else{
         const sel = g.qty - s.qty, cat=[], ket=[];
         const u8=Array.from(g.uom).sort().join(","), us=Array.from(s.uom.keys()).sort().join(",");
@@ -1853,6 +1950,7 @@ function rekonB(docs, scm, tol, margin){
           exportir:Array.from(s.exp).sort().join("; ").slice(0,120),
           status, keterangan:kap(ket.join(" \u00b7 "))});
       }
+      Object.assign(o, cariClp({ctr:ctrPertama(g.ctr), nopen:g.nopen, ref:g.tglDaftar, scmRec:s || null}, S));
       if(kunciTerpakai) terpakai.add(kunciTerpakai);
       return o;
     });
@@ -1866,6 +1964,7 @@ function rekonB(docs, scm, tol, margin){
     if(terpakai.has(k) || !v.tgl) return;
     if(lo && (v.tgl<lo || v.tgl>hi)) return;   // periode mengikuti rentang tgl daftar P3BET
     const gis = Array.from(v.gi).sort();
+    const hariIni = statusHariIni(opsi.today, v.tgl);
     balik.push({nomorDaftar:v.nopen, tglDaftar:v.tgl, brand:"\u2014",
       kontainer:Array.from(v.ctr).sort().join("; ").slice(0,60),
       qty08:null, uom08:"", aju:null, file:null,
@@ -1874,9 +1973,12 @@ function rekonB(docs, scm, tol, margin){
       selisih:null, baris:v.baris,
       uomScm:Array.from(v.uom.entries()).sort().map(([u,x])=>u+"="+fmtN(x)).join("; "),
       exportir:Array.from(v.exp).sort().join("; ").slice(0,120),
-      status:"TIDAK ADA DI P3BET",
-      keterangan:"Nomor daftar ini ada di Outbound SCM tanggal "+fmtD(v.tgl)+
-                 " tapi tidak ada di data P3BET. Tanggal pada baris ini diambil dari NOPEN DATE di SCM."});
+      status: hariIni ? OUTBOUND_HARI_INI : "TIDAK ADA DI P3BET",
+      keterangan: hariIni
+        ? ketHariIni(opsi.today, "nomor daftar ini sudah ada di Outbound SCM tapi data P3BET-nya belum ada")
+        : "Nomor daftar ini ada di Outbound SCM tanggal "+fmtD(v.tgl)+
+          " tapi tidak ada di data P3BET. Tanggal pada baris ini diambil dari NOPEN DATE di SCM.",
+      ...cariClp({ctr:ctrPertama(v.ctr), nopen:v.nopen, ref:v.tgl, scmRec:v}, S)});
   });
 
   const semua = rows.concat(balik).sort((a,b)=>
@@ -1893,8 +1995,14 @@ function gabung(set){
     ? a.slice(0,MAKS_TAMPIL).join("; ") + " \u2026 (+" + fmtN(a.length-MAKS_TAMPIL) + " lagi)"
     : a.join("; ");
 }
-function buatInfo(docs, nike, adidas, scm){
+function buatInfo(docs, nike, adidas, scm, jadwal){
   const out = [];
+  // CLP container Nike ada di jadwal K+N (kolom CLP NO), bukan di recap Nike
+  const tambahJadwal = (set, ctr, ref) => {
+    if(!jadwal || !ctr || !jadwal.has(ctr)) return;
+    const j = clpJadwal(jadwal.get(ctr), ref);
+    if(j !== null && j !== undefined && String(j).trim() && !ERR_XL.test(String(j).trim())) set.add(String(j).trim());
+  };
   const scmDipakai = new Set();
 
   // nomor daftar kosong -> CLP dicari lewat nomor container
@@ -1922,6 +2030,7 @@ function buatInfo(docs, nike, adidas, scm){
       qtyLap = grp.reduce((a,x)=>a+(x.qty||0),0);
       sumber.add(src);
     }
+    tambahJadwal(clp, d.ctr, ref);
     const sk = d.nopen + "|" + key(d.tglDaftar);
     let sv = scm ? scm.get(sk) : null;
     if(!sv && scm && scm.byNopen){
@@ -1959,6 +2068,7 @@ function buatInfo(docs, nike, adidas, scm){
         const clp=new Set(), so=new Set();
         v.forEach(x=>{ if(x.clp) clp.add(String(x.clp).trim());
                        if(x.so) so.add(String(x.so).trim()); });
+        tambahJadwal(clp, c, dt);
         if(!clp.size) clpDariCtr(c).forEach(x=>clp.add(x));
         out.push({nomorDaftar:null, tglDaftar:dt, kontainer:v[0].raw, brand:nama,
                   clp:gabung(clp), so:gabung(so), nSo:so.size,
@@ -1984,22 +2094,22 @@ function buatInfo(docs, nike, adidas, scm){
 
 /* ====================== definisi tabel ====================== */
 const D = "date", N = "num", M = "mono", T = "text", W = "wrap", C = "note", S = "status",
-      E = "edit", J = "adjust", X = "selisih", DT = "detail";
+      E = "edit", J = "adjust", X = "selisih", DT = "detail", CS = "case";
 const TABLES = {
   A: {label:"Rekon P3BET = Laporan Adidas / Nike", sheet:"REKON P3BET = ADIDAS-NIKE", cols:[
-    ["Category","brand",T],["Nomor Container","kontainer",M],["Tgl Stuffing","tglLap",D],
+    ["Category","brand",T],["Nomor Container","kontainer",M],["CLP","clp",M],["Tgl Stuffing","tglLap",D],
     ["Nomor Daftar","nomorDaftar",M],["Tgl Daftar","tglDaftar",D],
     ["Qty Laporan","qtyLap",N],["Qty P3BET","kemasan08",N],
     ["Adjust Qty","adjust",J],["Selisih Akhir","selisihAkhir",X],
     ["Status Awal","statusRaw",S],["Status Akhir","status",S],
-    ["Keterangan","keterangan",W],["Catatan","catatan",E],["","detail",DT]]},
+    ["Keterangan","keterangan",W],["Case","caseInfo",CS],["Catatan","catatan",E],["","detail",DT]]},
   B: {label:"Rekon P3BET = SCM", sheet:"REKON P3BET = SCM", cols:[
     ["Nomor Daftar","nomorDaftar",M],["Tgl Daftar","tglDaftar",D],
-    ["No Job SCM","job",M],["Tgl GI","gi",D],
+    ["No Job SCM","job",M],["CLP","clp",M],["Tgl GI","gi",D],
     ["Qty P3BET","qty08",N],["Qty SCM","qtyScm",N],
     ["Adjust Qty","adjust",J],["Selisih Akhir","selisihAkhir",X],
     ["Status Awal","statusRaw",S],["Status Akhir","status",S],
-    ["Keterangan","keterangan",W],["Catatan","catatan",E],["","detail",DT]]},
+    ["Keterangan","keterangan",W],["Case","caseInfo",CS],["Catatan","catatan",E],["","detail",DT]]},
   C: {label:"Data SO", sheet:"DATA SO", cols:[
     ["Nomor Daftar","nomorDaftar",M],["Tgl Daftar","tglDaftar",D],
     ["Nomor Container","kontainer",M],["Category","brand",T],
@@ -2010,7 +2120,7 @@ const TABLES = {
 const PILL = {"MATCH":"ok","MATCH (ADJ)":"match-adj","TIDAK DIEVALUASI":"notEval",
               "SELISIH QTY, TGL OK":"warn","QTY OK, SELISIH TGL":"warn",
               "SELISIH QTY & TGL":"warn","TIDAK ADA DI LAPORAN":"bad","TIDAK ADA DI SCM":"bad",
-              "TIDAK ADA DI P3BET":"bad","PEMBATALAN":"batal"};
+              "TIDAK ADA DI P3BET":"bad","PEMBATALAN":"batal","OUTBOUND HARI INI":"today"};
 
 /* ====================== state ====================== */
 let berkas = [];
@@ -2186,6 +2296,7 @@ async function pullFromSupabase(){
     });
     Object.keys(byRun).forEach(id => Store.putRun(byRun[id]));
     if(RUN && byRun[RUN.runId]) bindRun(byRun[RUN.runId]);
+    if(window.OBCase && OBCase.aktif()) OBCase.terapkan();   // catatan & penyesuaian berasal dari case, bukan run
     setSyncStatus("tersinkron · " + fmtTs(nowIso()));
   }catch(e){
     console.warn("Gagal mengambil data dari server:", e);
@@ -2230,12 +2341,15 @@ async function refreshAuthUI(session){
     Store.setOperator(displayNameFromUser(user));
     await pullFromSupabase();
     await pushLegacyIfNeeded();
+    // case per baris (outbound-cases.js); tanpa SQL case halaman tetap memakai catatan per run
+    if(window.OBCase){ await OBCase.mulai(user); if(R) gambarUlangSemua(); }
     renderOfficial(); updateNoteCount();
     if($("#runPanel").classList.contains("on")) renderRunList();
     if($("#dataPanel").classList.contains("on")) renderDataPanel();
   }else{
     document.body.classList.remove("authed");
     $("#acctEmail").textContent = "";
+    if(window.OBCase) OBCase.berhenti();
   }
 }
 
@@ -2356,6 +2470,9 @@ function persistRun(){
 /* saveNotes() dipertahankan namanya karena dipanggil dari banyak tempat.
    Sekarang: sinkronkan notes/adjust -> notesMeta/adjMeta -> run -> localStorage. */
 function saveNotes(){
+  // Mode case: notes/adjust diturunkan dari case (outbound-cases.js) dan disimpan per case.
+  // Di sini cukup simpan salinannya ke run sebagai arsip.
+  if(window.OBCase && OBCase.aktif()){ persistRun(); updateNoteCount(); return; }
   // teks catatan yang diketik langsung di sel tabel
   Object.keys(notes).forEach(k=>{
     const teks = notes[k];
@@ -2389,6 +2506,7 @@ function saveNotes(){
 function updateNoteCount(){
   const el = $("#noteCount");
   if(!el) return;
+  if(window.OBCase && OBCase.aktif()){ el.textContent = OBCase.ringkasHitung(); return; }
   const n = Object.keys(notes).length, m = Object.keys(adjust).length;
   if(!n && !m){ el.textContent = storageRusak ? "penyimpanan browser penuh" : ""; return; }
   let bagian = [];
@@ -2552,11 +2670,14 @@ $("#run").addEventListener("click", async () => {
     tick("Mencocokkan\u2026", 88); await yield_();
     const jalanA = adaLaporan && tidakDinilai.indexOf("A") < 0;
     const jalanB = !!bahan.scm && tidakDinilai.indexOf("B") < 0;
-    const A = jalanA ? rekonA(bahan.docs, bahan.nike, bahan.adidas, tol, tolHari, bahan.jadwal) : null;
-    const B = jalanB ? rekonB(bahan.docs, bahan.scm, tol) : null;
-    const C = buatInfo(bahan.docs, bahan.nike, bahan.adidas, bahan.scm);
+    const sekarang = new Date();
+    const today = new Date(sekarang.getFullYear(), sekarang.getMonth(), sekarang.getDate());
+    const opsi = {today, scm:bahan.scm, nike:bahan.nike, adidas:bahan.adidas, jadwal:bahan.jadwal};
+    const A = jalanA ? rekonA(bahan.docs, bahan.nike, bahan.adidas, tol, tolHari, bahan.jadwal, opsi) : null;
+    const B = jalanB ? rekonB(bahan.docs, bahan.scm, tol, undefined, opsi) : null;
+    const C = buatInfo(bahan.docs, bahan.nike, bahan.adidas, bahan.scm, bahan.jadwal);
     const t = bahan.docs.map(d=>d.tglDaftar).filter(Boolean);
-    R = {A, B, C, docs:bahan.docs, tol, tolHari, tidakDinilai,
+    R = {A, B, C, docs:bahan.docs, tol, tolHari, tidakDinilai, today, hariIniBerlaku:!akhirBulan(today),
          periodeLo:new Date(Math.min(...t)), periodeHi:new Date(Math.max(...t)),
          sumber:{
            f08: bahan.peran.filter(p=>p.jenis==="p3bet").map(p=>p.nama),
@@ -2580,6 +2701,8 @@ $("#run").addEventListener("click", async () => {
 /* ====================== tampilkan hasil ====================== */
 function showResults(){
   $("#results").classList.add("on");
+  // mode case: isi catatan/penyesuaian dari case lalu evaluasi ulang penyesuaian "belum tersedia"
+  if(window.OBCase && OBCase.aktif()) OBCase.setelahHasil();
   saveNotes();
   $("#periode").textContent = "Periode folder 08 · " + fmtD(R.periodeLo) + " – " + fmtD(R.periodeHi);
   card("A", R.A, "kemasan08", "qtyLap", "CT", "CTN", "baris");
@@ -2622,7 +2745,8 @@ function statusEfektif(tab, r){
   return selisihAkhir(tab, r) === 0 ? "MATCH (ADJ)" : r.status;
 }
 const KELAS_STATUS = st => (st==="MATCH" || st==="MATCH (ADJ)") ? "match"
-  : (st==="PEMBATALAN" ? "batal" : (st.indexOf("TIDAK ADA")===0 ? "bad" : "warn"));
+  : (st==="PEMBATALAN" ? "batal" : (st===OUTBOUND_HARI_INI ? "today"
+  : (st.indexOf("TIDAK ADA")===0 ? "bad" : "warn")));
 
 function card(id, data, f8, fp, u8, up, satuan){
   const c = $("#card"+id);
@@ -2645,7 +2769,8 @@ function card(id, data, f8, fp, u8, up, satuan){
   const cnt = {}; rows.forEach(r=>{ const st = statusEfektif(id, r); cnt[st]=(cnt[st]||0)+1; });
   const ok = (cnt["MATCH"]||0) + (cnt["MATCH (ADJ)"]||0);
   const batal = cnt["PEMBATALAN"]||0;
-  const dinilai = n - batal;                    // pembatalan tidak dihitung sebagai selisih
+  const hariIni = cnt[OUTBOUND_HARI_INI]||0;
+  const dinilai = n - batal - hariIni;          // pembatalan & outbound hari ini tidak dihitung sebagai selisih
   const pct = dinilai ? (ok/dinilai*100) : 0;
   $("#score"+id).className = "score" + (ok===dinilai ? "" : " bad");
   $("#score"+id).innerHTML =
@@ -2653,7 +2778,7 @@ function card(id, data, f8, fp, u8, up, satuan){
     "<span class='pct'>"+pct.toFixed(pct===100?0:1)+"%</span>";
 
   // satu batang penuh, lebarnya sebanding jumlah baris tiap status
-  const bobot = x => x==="MATCH" ? 0 : (x==="MATCH (ADJ)" ? 1 : (x==="PEMBATALAN" ? 3 : 2));
+  const bobot = x => x==="MATCH" ? 0 : (x==="MATCH (ADJ)" ? 1 : (x==="PEMBATALAN" ? 3 : (x===OUTBOUND_HARI_INI ? 2.5 : 2)));
   const urut = Object.keys(cnt).sort((a,b)=> bobot(a)-bobot(b) || a.localeCompare(b));
   $("#bar"+id).innerHTML = urut.map(k=>
     '<i class="'+KELAS_STATUS(k)+'" data-t="'+id+'" data-st="'+esc(k)+'" ' +
@@ -2681,24 +2806,32 @@ function card(id, data, f8, fp, u8, up, satuan){
   const perlu = dinilai - ok;
   const selisihMentah = t8 - tp;
   const selisihAdj = selisihMentah + dampak;   // selisih mentah + dampak bersih seluruh adjustment
-  const nilaiFinal = nAdj ? selisihAdj : selisihMentah;   // "Compare Final" = mentah kalau belum ada adjustment
+  // Outbound hari ini belum tentu sudah tercatat di sumber lawan, jadi selisih qty-nya
+  // dikeluarkan dari Compare Final (Total dan Compare Qty mentah tetap apa adanya).
+  const selHariIni = hariIni ? rows.reduce((s,r)=>
+    statusEfektif(id, r) === OUTBOUND_HARI_INI ? s + selisihAkhir(id, r) : s, 0) : 0;
+  const nilaiFinal = (nAdj ? selisihAdj : selisihMentah) - selHariIni;   // "Compare Final" = mentah kalau belum ada adjustment
   const aman = nilaiFinal === 0;
 
   const fb = $("#final"+id);
   fb.className = "finalbadge on " + (aman ? "aman" : "perhatian");
   fb.innerHTML =
     "<div><div class='fb-label'>Compare Final Qty</div>" +
-    "<div class='fb-sub'>"+(nAdj ? "setelah "+fmtN(nAdj)+" baris adjustment" : "belum ada adjustment")+"</div></div>" +
+    "<div class='fb-sub'>"+(nAdj ? "setelah "+fmtN(nAdj)+" baris adjustment" : "belum ada adjustment") +
+      (hariIni ? " \u00b7 tanpa "+fmtN(hariIni)+" baris outbound hari ini" : "")+"</div></div>" +
     "<div class='fb-val'>"+(aman ? "\u2713 SESUAI" : fmtN(nilaiFinal))+"</div>";
 
   $("#totals"+id).innerHTML =
     "<div>Total P3BET<b>"+fmtN(t8)+" "+u8+"</b></div>" +
     "<div>Total laporan<b>"+fmtN(tp)+" "+up+"</b></div>" +
     "<div class='diff"+(selisihMentah===0?" zero":"")+"'>Compare Qty<b>"+fmtN(selisihMentah)+"</b></div>" +
-    (nAdj ? "<div class='diff"+(selisihAdj===0?" zero":"")+"'>Compare Final Qty<b>"+
-            fmtN(selisihAdj)+"</b></div>" : "") +
+    (nAdj ? "<div class='diff"+(nilaiFinal===0?" zero":"")+"'>Compare Final Qty<b>"+
+            fmtN(nilaiFinal)+"</b></div>" : "") +
     "<div class='diff"+(perlu===0?" zero":"")+"'>Perlu dicek<b>"+fmtN(perlu)+" baris</b></div>" +
     (batal ? "<div>Pembatalan<b>"+fmtN(batal)+" nopen</b></div>" : "") +
+    (hariIni ? "<div class='klik' role='button' tabindex='0' data-t='"+id+"' data-st='"+OUTBOUND_HARI_INI+"' " +
+               "title='Klik untuk melihat baris outbound hari ini'>Outbound hari ini<b>"+fmtN(hariIni)+
+               " baris · qty "+fmtN(selHariIni)+"</b></div>" : "") +
     (nAdj ? "<div class='klik' role='button' tabindex='0' data-t='"+id+"' data-adj='1' " +
             "title='Klik untuk melihat baris yang disesuaikan'>Qty adjustment<b>" +
             fmtN(dampak) + "</b></div>" +
@@ -2753,7 +2886,11 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("click", e => {
   const adjTile = e.target.closest(".totals div.klik");
-  if(adjTile){ saringPenyesuaian(adjTile.dataset.t); return; }
+  if(adjTile){
+    if(adjTile.dataset.st) saringLewatLegenda(adjTile.dataset.t, adjTile.dataset.st);
+    else saringPenyesuaian(adjTile.dataset.t);
+    return;
+  }
   const lg = e.target.closest(".legend .lg");
   if(lg){ klikSaring(lg); return; }
   const seg = e.target.closest(".bar i");
@@ -2832,6 +2969,10 @@ function filtered(){
   if(nt) rows = rows.filter(x=>{
     if(nt==="adj")   return nilaiAdjust(k, x.r) !== 0;
     if(nt==="noadj") return nilaiAdjust(k, x.r) === 0;
+    if(nt==="case" || nt==="caseaktif" || nt==="caseclosed"){
+      const i = infoCase(k, x.r);
+      return nt==="case" ? !!i : (nt==="caseaktif" ? !!i && i.aktif > 0 : !!i && i.aktif === 0);
+    }
     const ada = !!notes[noteKey(k,x.r)];
     return nt==="ada" ? ada : !ada;
   });
@@ -2847,6 +2988,7 @@ function filtered(){
   }
   if(q) rows = rows.filter(x=>def.cols.some(c=>{
     const v = c[2]===E ? (notes[noteKey(k,x.r)]||"")
+            : c[2]===CS ? ((infoCase(k, x.r) || {}).teks || "")
             : (c[2]===S ? (c[1]==="statusRaw" ? x.r.status : statusEfektif(k, x.r)) : x.r[c[1]]);
     if(v===null||v===undefined) return false;
     return (c[2]===D ? fmtD(v) : String(v)).toLowerCase().includes(q);
@@ -2864,9 +3006,25 @@ function filtered(){
   }
   return rows;
 }
+// info kolom "Case": dari case (mode case) atau dari status catatan run (mode lama)
+function infoCase(tab, r){
+  const k = noteKey(tab, r);
+  if(window.OBCase && OBCase.aktif()) return OBCase.info(k);
+  const m = notesMeta[k];
+  if(!m || !m.text) return null;
+  const s = m.status === "RESOLVED" ? "CLOSED" : (m.status || "OPEN");
+  return {teks:m.status || "OPEN", kelas:s === "CLOSED" ? "ok" : (s === "IN PROGRESS" ? "match-adj" : "warn"),
+          n:1, aktif:s === "CLOSED" ? 0 : 1};
+}
 function cell(v,t,nk,batal){
   if(t===DT) return '<td class="detail"><button class="'+(v?"has":"")+'" data-nk="'+esc(nk)+
     '" title="Rincian, kategori, group ID, dan riwayat perubahan">\u22ef</button></td>';
+  if(t===CS) return '<td class="casecell" data-nk="'+esc(nk)+'" title="Klik untuk membuka case baris ini">' +
+    (v ? '<span class="pill '+esc(v.kelas)+'">'+esc(v.teks)+"</span>" : "") + "</td>";
+  // mode case: catatan & penyesuaian diedit lewat laci case (cek versi), bukan diketik di sel
+  if((t===E || t===J) && window.OBCase && OBCase.aktif())
+    return '<td class="'+(t===E?"edit":"adj")+' ro'+(v?" saved":"")+'" data-nk="'+esc(nk)+'" title="Klik untuk membuka case baris ini">' +
+      esc(t===J ? (v===0||v ? fmtN(v) : "") : (v||"")) + "</td>";
   if(t===E) return '<td class="edit'+(v?" saved":"")+'" contenteditable="true" spellcheck="false" ' +
     'data-nk="'+esc(nk)+'" data-ph="tulis catatan\u2026">'+esc(v||"")+"</td>";
   if(t===J) return '<td class="adj'+(v?" saved":"")+'" contenteditable="true" spellcheck="false" ' +
@@ -2939,7 +3097,8 @@ function drawTable(){
         if(c[2]===E) v = notes[nk] || "";
         else if(c[2]===J) v = adjust[nk];
         else if(c[2]===X) v = selisihAkhir(active, x.r);
-        else if(c[2]===DT) v = (notes[nk] || adjust[nk]) ? 1 : 0;
+        else if(c[2]===CS) v = infoCase(active, x.r);
+        else if(c[2]===DT) v = (notes[nk] || adjust[nk] || infoCase(active, x.r)) ? 1 : 0;
         else if(c[2]===S) v = (c[1]==="statusRaw" ? x.r.status : statusEfektif(active, x.r));
         else v = x.r[c[1]];
         const batal = c[1]==="kemasan08" ? x.r.batalKemasan08 : (c[1]==="qty08" ? x.r.batalSatuan08 : 0);
@@ -2958,7 +3117,7 @@ function drawTable(){
   // Nilai disimpan langsung saat diketik. Tabel TIDAK digambar ulang di sini, karena
   // menggambar ulang saat blur akan menghapus elemen yang sedang diklik pengguna,
   // sehingga klik berikutnya hilang dan nilai yang baru diketik ikut terbuang.
-  $("#tablewrap").querySelectorAll("td.adj").forEach(td=>{
+  $("#tablewrap").querySelectorAll("td.adj:not(.ro)").forEach(td=>{
     const simpan = ()=>{
       const nk = td.dataset.nk;
       const teks = td.textContent.replace(/[^0-9.,+-]/g,"").replace(/\./g,"").replace(",",".").trim();
@@ -2987,7 +3146,7 @@ function drawTable(){
       if(e.key==="Escape"){ td.textContent = adjust[td.dataset.nk] || ""; td.blur(); }
     });
   });
-  $("#tablewrap").querySelectorAll("td.edit").forEach(td=>{
+  $("#tablewrap").querySelectorAll("td.edit:not(.ro)").forEach(td=>{
     const simpan = ()=>{
       const nk = td.dataset.nk, val = td.textContent.trim();
       if(val) notes[nk] = val; else delete notes[nk];
@@ -3022,15 +3181,22 @@ $("#fperiode").addEventListener("change", ()=>{ limit=250; drawTable(); });
 $("#fnote").addEventListener("change", ()=>{ limit=250; drawTable(); tandaiLegenda(); });
 
 /* ====================== ekspor ====================== */
-function sheetFrom(k){
-  const def = TABLES[k], rows = dataOf(k);
-  const kolom = def.cols.filter(c=>c[2]!==DT);
+function sheetFrom(k, rowsPilihan){
+  const def = TABLES[k], rows = rowsPilihan || dataOf(k);
+  // kolom tabel, ditambah "Sumber CLP" (hanya di Excel) tepat sesudah kolom CLP
+  const kolom = [];
+  def.cols.forEach(c=>{
+    if(c[2]===DT) return;
+    kolom.push(c);
+    if(c[1]==="clp" && k!=="C") kolom.push(["Sumber CLP","clpSumber",T]);
+  });
   const head = kolom.map(c=>c[0]);
   const body = rows.map(r=>kolom.map(c=>{
     let v;
     if(c[2]===E) v = notes[noteKey(k,r)] || "";
     else if(c[2]===J) v = nilaiAdjust(k, r) || "";
     else if(c[2]===X) v = selisihAkhir(k, r);
+    else if(c[2]===CS){ const i = infoCase(k, r); v = i ? i.teks : ""; }
     else if(c[2]===S) v = (c[1]==="statusRaw" ? r.status : statusEfektif(k, r));
     else v = r[c[1]];
     if(v===null||v===undefined||v==="") return "";
@@ -3042,6 +3208,48 @@ function sheetFrom(k){
   ws["!cols"] = kolom.map(c=>({wch: c[2]===W||c[2]===C ? 42 : Math.max(11, Math.min(26, c[0].length+4))}));
   ws["!freeze"] = {xSplit:0, ySplit:1};
   return ws;
+}
+/* ---- ekspor khusus baris yang sedang tampil (filter + urutan tabel) ---- */
+function teksPilihan(sel){
+  const o = sel && sel.options && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+  return o && sel.value ? o.textContent : "";
+}
+function deskripsiFilter(){
+  const d = [];
+  const q = $("#q").value.trim();
+  if(q) d.push(["Pencarian", q]);
+  if($("#fperiode").value) d.push(["Periode", teksPilihan($("#fperiode"))]);
+  if($("#fstat").value) d.push(["Status", $("#fstat").value]);
+  if($("#fnote").value) d.push(["Catatan / penyesuaian", teksPilihan($("#fnote"))]);
+  if(filterEksepsi && EKSEPSI[filterEksepsi]) d.push(["Eksepsi", EKSEPSI[filterEksepsi].lbl]);
+  if(sortCol !== null) d.push(["Urut", TABLES[active].cols[sortCol][0] + (sortDir > 0 ? " (naik)" : " (turun)")]);
+  return d;
+}
+function eksporFilter(){
+  if(!R || !active) return;
+  const rows = filtered().map(x=>x.r);
+  if(!rows.length){ gltToast("Tidak ada baris yang cocok dengan filter saat ini.", "warn"); return; }
+  const fil = deskripsiFilter();
+  const L = [["EKSPOR HASIL FILTER"], [],
+    ["Tabel", TABLES[active].label],
+    ["Jumlah baris", rows.length + " dari " + dataOf(active).length],
+    ["Run ID", RUN ? RUN.runId : "(tidak tersimpan)"],
+    ["Periode folder 08", fmtD(R.periodeLo) + " s/d " + fmtD(R.periodeHi)],
+    ["Diekspor oleh", operator()],
+    ["Waktu", new Date().toLocaleString("id-ID")], [],
+    ["Filter yang dipakai"]];
+  if(fil.length) fil.forEach(x=>L.push(x)); else L.push(["(tanpa filter)", "semua baris tabel"]);
+  const info = XLSX.utils.aoa_to_sheet(L);
+  info["!cols"] = [{wch:24}, {wch:60}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, sheetFrom(active, rows), "HASIL FILTER");
+  if(window.OBCase && OBCase.aktif() && active !== "C")
+    XLSX.utils.book_append_sheet(wb, OBCase.sheetCases(rows.map(r=>noteKey(active, r))), "CASE");
+  XLSX.utils.book_append_sheet(wb, info, "INFO FILTER");
+  XLSX.writeFile(wb, "Rekon_GLT_" + TABLES[active].sheet.replace(/[^A-Za-z0-9]+/g,"_") + "_FILTER_" + stamp() + ".xlsx");
+  jejak("EKSPOR FILTER", active, "", fmtN(rows.length) + " baris diekspor", "", "",
+        fil.map(x=>x[0] + ": " + x[1]).join(" · "));
+  persistRun();
 }
 function ringkasan(){
   const L = [];
@@ -3087,6 +3295,8 @@ function ringkasan(){
     "Untuk Adidas dipakai kolom DATE STUFFING. Recap Nike tidak punya kolom itu, jadi dipakai DATE OUT.",
     "Rekon P3BET = SCM dicocokkan lewat nomor daftar, nol di depan diabaikan. Kalau tanggal nopen di SCM berbeda, barisnya tetap dipasangkan lalu diberi keterangan.",
     "Qty SCM dijumlahkan lintas satuan; perbedaan komposisi satuan ditandai di kolom Catatan.",
+    "Kolom CLP: Adidas dari kolom CLP di IOR, Nike dari kolom CLP NO di jadwal K+N (sheet REPORT), SCM dari kolom PO NUMBER. Hanya informasi, tidak memengaruhi status.",
+    "Baris tanpa padanan yang tanggalnya sama dengan hari pengecekan diberi status OUTBOUND HARI INI dan tidak dihitung sebagai selisih maupun dalam Compare Final Qty. Pengecualian: pada hari terakhir bulan aturan ini tidak berlaku.",
     "Kontainer yang dipakai lebih dari sekali dicocokkan ke kelompok tanggal terdekat.",
     "Anomali sumber hanya ditandai, tidak diubah."
   ].forEach(t=>L.push([t]));
@@ -3096,7 +3306,7 @@ function ringkasan(){
 }
 function stamp(){
   const d = R.periodeLo, e = R.periodeHi;
-  return fmtD(d).replace(/ /g,"-") + "_sd_" + fmtD(e).replace(/ /g,"-");
+  return fmtD(d).replace(/[ \/]/g,"-") + "_sd_" + fmtD(e).replace(/[ \/]/g,"-");
 }
 /* Handler ekspor & catatan lama dipindahkan ke modul resmi di bawah. */
 
@@ -3378,7 +3588,8 @@ function usulanSalin(){
 }
 function renderCarry(){
   const el = $("#carry");
-  if(!RUN){ el.classList.remove("on"); return; }
+  // mode case: case melekat pada baris dan otomatis berlaku di run baru, tidak perlu disalin
+  if(!RUN || (window.OBCase && OBCase.aktif())){ el.classList.remove("on"); return; }
   const u = usulanSalin();
   if(!u.n && !u.m){ el.classList.remove("on"); el.innerHTML = ""; return; }
   const asal = Array.from(new Set(Object.values(u.asal))).slice(0,3).join(", ");
@@ -3512,7 +3723,9 @@ const EKSEPSI = {
   anom:  {lbl:"Source Anomaly", ikon:"\u26aa",    kelas:"anom",  sub:"nilai sumber janggal",
           uji:(t,r) => anomaliBaris(t,r)},
   batal: {lbl:"Pembatalan",     ikon:"\u26aa",    kelas:"batal", sub:"dokumen dibatalkan",
-          uji:(t,r) => statusEfektif(t,r) === "PEMBATALAN"}
+          uji:(t,r) => statusEfektif(t,r) === "PEMBATALAN"},
+  today: {lbl:"Outbound Hari Ini", ikon:"\u{1F552}", kelas:"today", sub:"belum tercatat di sumber lawan",
+          uji:(t,r) => statusEfektif(t,r) === OUTBOUND_HARI_INI}
 };
 function hitungEksepsi(){
   const out = {};
@@ -3574,6 +3787,7 @@ function saringEksepsi(k){
 
 /* ======================= 7. LACI RINCIAN PER BARIS ======================= */
 function bukaLaci(recordKey){
+  if(window.OBCase && OBCase.aktif()) return OBCase.bukaLaci(recordKey);   // laci daftar case
   const tab = recordKey.split("|")[0];
   const rows = dataOf(tab);
   const r = rows.find(x => noteKey(tab, x) === recordKey);
@@ -3644,8 +3858,10 @@ function tutupLaci(){
   drKey = null;
   $("#drawer").classList.remove("on"); $("#drawer").setAttribute("aria-hidden","true");
   $("#scrim").classList.remove("on");
+  if(window.OBCase) OBCase.tutupLaci();
 }
 function simpanLaci(){
+  if(window.OBCase && OBCase.aktif()) return OBCase.simpanLaci();
   if(!drKey) return;
   const k = drKey, tab = k.split("|")[0];
   const teksBaru = $("#drText").value.trim();
@@ -3712,7 +3928,8 @@ function renderRunList(){
         " \u00b7 " + fmtN(x.catatan) + " catatan, " + fmtN(x.penyesuaian) + " penyesuaian, " +
         fmtN(x.audit) + " jejak audit</small></span>" +
       (aktif ? '<span class="tag" style="font-family:var(--mono);font-size:10px;color:var(--seal)">RUN AKTIF</span>'
-             : '<button class="btn mini" data-buka="' + esc(x.runId) + '">Buka catatan</button>') +
+             : (window.OBCase && OBCase.aktif() ? ""   // mode case: catatan tidak lagi per run
+               : '<button class="btn mini" data-buka="' + esc(x.runId) + '">Buka catatan</button>')) +
       '<button class="btn mini" data-unduh="' + esc(x.runId) + '">Unduh</button>' +
       '<button class="btn mini danger" data-hapus="' + esc(x.runId) + '">Hapus</button>' +
       "</div>";
@@ -3763,7 +3980,9 @@ function renderDataPanel(){
     {t:"Run aktif", s:RUN ? RUN.runId : "(belum ada)"},
     {t:"Perkiraan pemakaian", s:(pakai/1024).toFixed(1) + " KB" + (storageRusak ? " \u2014 penyimpanan penuh" : "")},
     {t:"Kunci lama v1", s:legacy ? "sudah dimigrasi ke " + LEGACY_RUN_ID + ", kunci asli tidak dihapus"
-                                 : "tidak ditemukan"}
+                                 : "tidak ditemukan"},
+    {t:"Case per baris (server)", s:window.OBCase && OBCase.aktif() ? OBCase.ringkasHitung()
+                                    : "belum aktif — catatan masih per run (SQL case Outbound belum dijalankan)"}
   ].map(x => '<div class="vrow ok"><i>\u00b7</i><div>' + esc(x.t) + "<small>" + esc(x.s) + "</small></div></div>").join("");
 }
 
@@ -3795,7 +4014,9 @@ function buatBackup(){
     runHistory: runs,
     notes: notesFlat,
     adjustments: adjFlat,
-    auditTrail: auditFlat
+    auditTrail: auditFlat,
+    // salinan case server (hanya arsip; pemulihan case tetap lewat server & audit)
+    outboundCases: window.OBCase && OBCase.aktif() ? OBCase.semua() : undefined
   };
 }
 function periksaBackup(b){
@@ -3990,7 +4211,14 @@ function sheetAudit(){
   });
   return wsDari(L, [18, 18, 24, 10, 34, 44, 24, 24, 34]);
 }
-function eksporSemua(){
+async function eksporSemua(){
+  const modeCase = !!(window.OBCase && OBCase.aktif());
+  // mode case: riwayat audit case diambil dari server dulu (bisa beberapa detik)
+  let riwayat = null;
+  if(modeCase){
+    try{ riwayat = await OBCase.sheetRiwayat(OBCase.kunciHasil()); }
+    catch(e){ gltToast("Riwayat case gagal diambil dari server, sheet riwayat dilewati: " + (e.message || e), "warn", 9000); }
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, sheetCover(),       "01 COVER");
   XLSX.utils.book_append_sheet(wb, ringkasan(),        "02 RINGKASAN");
@@ -3998,12 +4226,13 @@ function eksporSemua(){
   if(R.B) XLSX.utils.book_append_sheet(wb, sheetFrom("B"), "04 REKON B");
   if(R.C) XLSX.utils.book_append_sheet(wb, sheetFrom("C"), "05 DATA SO");
   XLSX.utils.book_append_sheet(wb, sheetException(),   "06 EXCEPTION");
-  XLSX.utils.book_append_sheet(wb, sheetNotes(),       "07 NOTES");
+  XLSX.utils.book_append_sheet(wb, modeCase ? OBCase.sheetCases() : sheetNotes(), modeCase ? "07 CASE" : "07 NOTES");
   XLSX.utils.book_append_sheet(wb, sheetAdjustments(), "08 ADJUSTMENTS");
   XLSX.utils.book_append_sheet(wb, sheetAudit(),       "09 AUDIT TRAIL");
   XLSX.utils.book_append_sheet(wb, sheetRunInfo(),     "10 RUN INFO");
+  if(riwayat) XLSX.utils.book_append_sheet(wb, riwayat, "11 RIWAYAT CASE");
   XLSX.writeFile(wb, "Rekon_GLT_" + (RUN ? RUN.runId + "_" : "") + stamp() + ".xlsx");
-  jejak("EKSPOR EXCEL", "", "", "10 sheet diekspor", "", "", "");
+  jejak("EKSPOR EXCEL", "", "", wb.SheetNames.length + " sheet diekspor", "", "", "");
   persistRun();
 }
 
@@ -4092,6 +4321,15 @@ const paksaTab = {A:false, B:false};
     XLSX.utils.book_append_sheet(wb, sheetFrom(active), TABLES[active].sheet);
     XLSX.writeFile(wb, "Rekon_GLT_" + TABLES[active].sheet.replace(/[^A-Za-z0-9]+/g,"_") + "_" + stamp() + ".xlsx");
   });
+  $("#expFilter").addEventListener("click", eksporFilter);
+
+  /* -- bulk upload case (aktif bila outbound-cases.js & SQL case siap) -- */
+  $("#btnBulkTpl").addEventListener("click", ()=>{ if(window.OBCase) OBCase.unduhTemplate(); });
+  $("#btnBulkUp").addEventListener("click", ()=>$("#fileBulk").click());
+  $("#fileBulk").addEventListener("change", e=>{
+    const f = e.target.files[0]; e.target.value = "";
+    if(f && window.OBCase) OBCase.unggah(f);
+  });
 
   /* -- kelola data -- */
   $("#dClearSession").addEventListener("click", async ()=>{
@@ -4149,8 +4387,8 @@ const paksaTab = {A:false, B:false};
   $("#drSave").addEventListener("click", simpanLaci);
   document.addEventListener("keydown", e=>{ if(e.key === "Escape" && drKey) tutupLaci(); });
   document.addEventListener("click", e=>{
-    const b = e.target.closest && e.target.closest("td.detail button");
-    if(b) bukaLaci(b.dataset.nk);
+    const b = e.target.closest && e.target.closest("td.detail button, td.casecell, td.ro");
+    if(b && b.dataset.nk) bukaLaci(b.dataset.nk);
   });
 })();
 
@@ -4180,5 +4418,8 @@ window.RekonGLT = {
 };
 
 </script>
+<!-- Case per baris (seperti Inbound) + bulk upload. Tanpa SQL case Outbound keduanya diam. -->
+<script src="glt-bulk-upload.js"></script>
+<script src="outbound-cases.js"></script>
 </body>
 </html>
