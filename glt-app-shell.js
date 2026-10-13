@@ -17,10 +17,18 @@
 (function () {
   "use strict";
 
+  // Semua href relatif terhadap folder tempat file shell ini berada, supaya shell
+  // juga benar dipakai halaman di subfolder (mis. inbound/index.html memuat
+  // ../glt-app-shell.js). Halaman di root tidak terpengaruh.
+  var SELF = document.currentScript && document.currentScript.src;
+  var BASE = SELF ? SELF.replace(/[^/]*$/, "") : "";
+
   var NAV = [
     { id: "dashboard", href: "index.html",                label: "Dashboard", icon: "grid" },
     { id: "outbound",  href: "outbound.html",             label: "Outbound",  icon: "upload" },
-    { id: "inbound",   href: "Rekonsiliasi_Inbound.html", label: "Inbound",   icon: "download" },
+    // Workspace Inbound baru. Versi lama (Rekonsiliasi_Inbound.html) tetap bisa dibuka
+    // langsung selama masa transisi dan tetap ditandai aktif di menu ini.
+    { id: "inbound",   href: "inbound/index.html",        label: "Inbound",   icon: "download", alias: ["rekonsiliasi_inbound.html", "inbound/"] },
     { id: "inventory", href: "inventory.html",            label: "Inventory", icon: "box" }
   ];
   var ADMIN_NAV = [
@@ -42,17 +50,24 @@
            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || "") + "</svg>";
   }
 
+  // Path halaman ini relatif terhadap BASE, mis. "outbound.html" atau "inbound/index.html".
   function currentFile() {
-    var path = location.pathname || "";
-    var file = path.substring(path.lastIndexOf("/") + 1);
-    return (file || "index.html").toLowerCase();
+    var here = String(location.href).split(/[?#]/)[0];
+    var rel;
+    if (BASE && here.indexOf(BASE) === 0) rel = here.slice(BASE.length);
+    else rel = here.substring(here.lastIndexOf("/") + 1);
+    if (!rel || rel.charAt(rel.length - 1) === "/") rel += "index.html";
+    return decodeURIComponent(rel).toLowerCase();
   }
 
   function activeNavId() {
     var file = currentFile();
     var all = NAV.concat(ADMIN_NAV);
     for (var i = 0; i < all.length; i++) {
-      if (all[i].href.toLowerCase() === file) return all[i].id;
+      var names = [all[i].href.toLowerCase()].concat(all[i].alias || []);
+      for (var j = 0; j < names.length; j++) {
+        if (names[j] === file || (names[j].slice(-1) === "/" && file.indexOf(names[j]) === 0)) return all[i].id;
+      }
     }
     return "dashboard";
   }
@@ -76,7 +91,7 @@
   }
 
   function navItemHTML(item, activeId) {
-    return '<a class="shell-nav-item" href="' + item.href + '" data-nav="' + item.id + '" title="' + item.label + '"' +
+    return '<a class="shell-nav-item" href="' + BASE + item.href + '" data-nav="' + item.id + '" title="' + item.label + '"' +
            (item.id === activeId ? ' aria-current="page"' : "") + '>' +
            '<span class="shell-nav-ico">' + svg(item.icon) + "</span>" +
            '<span class="shell-nav-text">' + item.label + "</span></a>";
@@ -92,7 +107,7 @@
       '<button class="shell-burger" id="gsBurger" type="button" aria-label="Buka menu navigasi" aria-expanded="false" aria-controls="gsSidebar">' +
         '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>' +
       "</button>" +
-      '<a class="shell-brand" href="index.html"><span class="shell-brand-mark"></span><b>GLT</b> <span>Rekon Suite</span></a>' +
+      '<a class="shell-brand" href="' + BASE + 'index.html"><span class="shell-brand-mark"></span><b>GLT</b> <span>Rekon Suite</span></a>' +
       '<span class="shell-crumb"><b>' + (active ? active.label : "Dashboard") + "</b></span>" +
       '<div class="shell-topbar-right">' +
         '<span class="shell-sync" id="gsSyncSlot"></span>' +
@@ -357,7 +372,11 @@
       if (avatarEl) avatarEl.textContent = (name || "?").charAt(0);
       if (menuName) menuName.textContent = name;
       if (menuMeta) menuMeta.textContent = user.email || "";
-      var isAdmin = !!(user.user_metadata && user.user_metadata.is_admin === true);
+      // Hanya menentukan tampil/tidaknya menu. app_metadata.role diisi server (tidak bisa
+      // diubah user); user_metadata.is_admin dipertahankan sebagai cadangan tampilan
+      // selama migrasi role belum dijalankan. Otorisasi nyata: Edge Function + RLS.
+      var isAdmin = !!((user.app_metadata && user.app_metadata.role === "admin") ||
+                       (user.user_metadata && user.user_metadata.is_admin === true));
       if (adminGroup) adminGroup.hidden = !isAdmin;
     }
 

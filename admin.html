@@ -117,6 +117,8 @@ td.actions{gap:6px;align-items:center}
 .authbox input{border-radius:var(--gs-radius-md);padding:10px 11px;background:var(--surface)}
 .authbox input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 .authbox button{border-radius:var(--gs-radius-md);padding:11px;font-weight:600}
+.role-select{padding:5px 8px;border:1px solid var(--border-strong);border-radius:var(--gs-radius-md);font:inherit;font-size:12.5px;background:var(--surface);color:var(--text)}
+.role-select:disabled{opacity:.7}
 </style>
 </head>
 <body data-module="admin">
@@ -152,9 +154,10 @@ td.actions{gap:6px;align-items:center}
   <div class="sub">Tambah akun, ganti nama tampilan, atau reset kata sandi kolega — tanpa perlu buka Supabase Dashboard.</div>
 
   <div id="notAdminBox" class="notadmin" style="display:none">
-    Anda masuk sebagai <b id="whoAmI"></b>, tapi akun ini belum ditandai sebagai admin.
-    Minta admin yang sudah ada untuk memberi akses lewat halaman ini, atau set langsung
-    <code>user_metadata.is_admin = true</code> di Supabase Dashboard untuk akun pertama.
+    Anda masuk sebagai <b id="whoAmI"></b>, tapi akun ini belum memiliki role admin.
+    Minta admin yang sudah ada untuk mengubah role Anda lewat halaman ini. Untuk akun admin
+    pertama, jalankan di Supabase SQL Editor:
+    <code>insert into app_user_roles (user_id, role) values ('&lt;id user&gt;', 'admin') on conflict (user_id) do update set role = 'admin';</code>
   </div>
 
   <div id="adminArea" style="display:none">
@@ -174,7 +177,7 @@ td.actions{gap:6px;align-items:center}
     <div class="panel">
       <h2>Daftar pengguna <button class="btn ghost" id="btnReload" type="button" style="margin-left:8px;padding:3px 10px;font-size:11px;">Segarkan</button></h2>
       <table>
-        <thead><tr><th>Nama Pengguna</th><th>Nama Tampilan</th><th>Admin</th><th>Status</th><th>Dibuat</th><th>Login terakhir</th><th>Aksi</th></tr></thead>
+        <thead><tr><th>Nama Pengguna</th><th>Nama Tampilan</th><th>Role</th><th>Status</th><th>Dibuat</th><th>Login terakhir</th><th>Aksi</th></tr></thead>
         <tbody id="userTbody"></tbody>
       </table>
       <div class="msg" id="listMsg"></div>
@@ -277,6 +280,19 @@ async function callAdmin(action, payload){
   return json;
 }
 
+// Role: operator (kerja harian), supervisor (+ pulihkan case, hapus massal, timpa konflik,
+// kelola sesi), admin (+ kelola pengguna & hapus permanen). Ditegakkan di server
+// (RLS/RPC + Edge Function); pilihan di sini hanya memanggil Edge Function.
+const ROLE_LABEL = { operator: "Operator", supervisor: "Supervisor", admin: "Admin" };
+function roleSelectHtml(u){
+  const role = u.role || (u.is_admin ? "admin" : "operator");
+  const self = currentUser && u.id === currentUser.id;
+  return '<select class="role-select" data-role-for="' + esc(u.id) + '" aria-label="Role ' + esc(u.username) + '"' +
+    (self ? ' disabled title="Role akun sendiri tidak bisa diubah dari sini"' : '') + '>' +
+    Object.keys(ROLE_LABEL).map(r => '<option value="' + r + '"' + (r === role ? " selected" : "") + '>' + ROLE_LABEL[r] + '</option>').join("") +
+    '</select>';
+}
+
 async function loadUsers(){
   const tbody = document.getElementById("userTbody");
   const msg = document.getElementById("listMsg");
@@ -287,7 +303,7 @@ async function loadUsers(){
       "<tr data-id=\"" + esc(u.id) + "\">" +
       "<td>" + esc(u.username) + "</td>" +
       "<td>" + esc(u.display_name) + "</td>" +
-      "<td>" + (u.is_admin ? '<span class="badge">ADMIN</span>' : "") + "</td>" +
+      "<td>" + roleSelectHtml(u) + "</td>" +
       "<td>" + (u.banned ? '<span class="badge blocked">DIBLOKIR</span>' : '<span class="badge">AKTIF</span>') + "</td>" +
       "<td>" + esc(fmtStamp(u.created_at)) + "</td>" +
       "<td>" + esc(fmtStamp(u.last_sign_in_at)) + "</td>" +
@@ -341,6 +357,18 @@ document.getElementById("userTbody").addEventListener("click", async (e)=>{
   }
 });
 
+document.getElementById("userTbody").addEventListener("change", async (e)=>{
+  const sel = e.target.closest("select[data-role-for]");
+  if(!sel) return;
+  const username = sel.closest("tr").children[0].textContent;
+  const role = sel.value;
+  const ok = await gltConfirm("Ubah role " + username + " menjadi " + ROLE_LABEL[role] + "?", {okLabel:"Ubah role"});
+  if(!ok){ loadUsers(); return; }
+  try{ await callAdmin("setRole", {userId: sel.dataset.roleFor, role}); gltToast("Role " + username + " sekarang " + ROLE_LABEL[role] + ". Berlaku saat pengguna memuat ulang halaman.", "ok"); }
+  catch(err){ gltToast("Gagal mengubah role: " + err.message, "err"); }
+  loadUsers();
+});
+
 document.getElementById("createForm").addEventListener("submit", async (e)=>{
   e.preventDefault();
   const msg = document.getElementById("createMsg");
@@ -367,7 +395,13 @@ async function refreshAuthUI(session){
   currentUser = user;
   if(user){
     document.body.classList.add("authed");
-    const isAdmin = !!(user.user_metadata && user.user_metadata.is_admin === true);
+    // Role dibaca dari server (tabel app_user_roles lewat RPC). Kalau migrasi SQL belum
+    // dijalankan, RPC belum ada -> jatuh ke penanda lama. Ini HANYA menentukan tampilan;
+    // otorisasi sesungguhnya dilakukan Edge Function admin-users.
+    let isAdmin = false;
+    const rpc = await supa.rpc("app_my_role");
+    if(!rpc.error) isAdmin = rpc.data === "admin";
+    else isAdmin = !!((user.app_metadata && user.app_metadata.role === "admin") || (user.user_metadata && user.user_metadata.is_admin === true));
     document.getElementById("whoAmI").textContent = displayNameFromUser(user);
     document.getElementById("notAdminBox").style.display = isAdmin ? "none" : "block";
     document.getElementById("adminArea").style.display = isAdmin ? "block" : "none";
