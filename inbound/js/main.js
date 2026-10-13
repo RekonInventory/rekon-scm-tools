@@ -10,6 +10,7 @@ import { createImportService } from "./application/import-service.js";
 import { createReconcileService } from "./application/reconcile-service.js";
 import { createExportService } from "./application/export-service.js";
 import { createBackupService } from "./application/backup-service.js";
+import { createBulkCaseService } from "./application/bulk-case-service.js";
 import { createEngineClient } from "./application/engine-client.js";
 import { downloadBlob, downloadText } from "./application/download.js";
 import { AuthRepository, displayNameFromUser } from "./infrastructure/auth-repository.js";
@@ -68,6 +69,7 @@ const session = createSessionService({ identity: me, onEvent: onSessionEvent });
 const reconciler = createReconcileService({ engine, cases, session, imports, whoAmI: () => me().name });
 const exporter = createExportService({ cases });
 const backup = createBackupService({ cases, whoAmI: () => me().name, periodKey: () => (store.get().result || {}).periodKey || null });
+const bulk = createBulkCaseService({ app, cases });
 
 app.session = session;   // untuk dialog diagnostik & harness uji
 app.logic = createFindingLogic({ result: () => store.get().result, view: () => store.get().view, cases: cases.store, includeHistoryInTotals: true });
@@ -222,6 +224,44 @@ A.exportFiltered = () => withExporting(() => {
   const payload = v.mode === "detail" ? { main: [], detail: rows } : { main: rows, detail: [] };
   return exporter.filtered(store.get().result, payload, v, app.logic.currentFilterLabel());
 }, "export hasil filter");
+/* ---------------- bulk upload case (template -> isi -> unggah -> pratinjau -> simpan) ---------------- */
+A.bulkTemplate = () => withExporting(() => bulk.template(app.visibleRows(), store.get().view), "template case");
+A.bulkUpload = () => {
+  const input = h("input", { type: "file", accept: ".xlsx,.xlsm,.xls", class: "gs-sr-only" });
+  input.addEventListener("change", async () => {
+    const f = input.files && input.files[0];
+    input.remove();
+    if (!f) return;
+    try {
+      const { rencana } = await bulk.rencanakan(f);
+      const n = (a) => rencana.filter((x) => x.aksi === a).length;
+      const jml = n("BARU") + n("UBAH");
+      const ok = await window.GLTBulk.pratinjau({
+        judul: "Pratinjau bulk upload case — " + f.name,
+        ringkasan: [{ label: "case baru", nilai: n("BARU"), kelas: "ok" }, { label: "case diubah", nilai: n("UBAH"), kelas: "ok" },
+          { label: "tanpa perubahan", nilai: n("SAMA") }, { label: "dilewati (kosong)", nilai: n("LEWAT") },
+          { label: "galat", nilai: n("GALAT"), kelas: n("GALAT") ? "bad" : "" }],
+        catatan: "Baris galat tidak disimpan. Case yang diubah orang lain sesudah pratinjau ini tidak akan ditimpa.",
+        kolom: [{ label: "Baris", key: "baris" }, { label: "Brand", key: "brand" }, { label: "NOPEN", key: "nopen" }, { label: "Case", key: "label" },
+          { label: "Aksi", key: "aksi" }, { label: "Perubahan / pesan", key: "pesan" }],
+        baris: rencana.filter((x) => x.aksi !== "LEWAT").concat(rencana.filter((x) => x.aksi === "LEWAT")),
+        okLabel: "Simpan " + jml + " case", okDisabled: !jml
+      });
+      if (!ok) return;
+      setSync("syncing");
+      toast("Menyimpan " + jml + " case…", "info");
+      const sum = await bulk.terapkan(rencana);
+      setSync("synced"); bumpCases();
+      ActivityRepository.record("cases_bulk_upload", { file: f.name, total: sum.total, ok: sum.sukses, conflict: sum.bentrok, error: sum.galat });
+      const lapor = await confirmDialog("Bulk upload selesai: " + sum.sukses + " case tersimpan" +
+        (sum.bentrok ? ", " + sum.bentrok + " bentrok (diubah orang lain, tidak ditimpa)" : "") + (sum.galat ? ", " + sum.galat + " gagal" : "") + ".",
+        { title: "Bulk upload case", okLabel: "Unduh laporan", cancelLabel: "Tutup", tone: sum.bentrok || sum.galat ? "warning" : null });
+      if (lapor) await bulk.laporan(rencana);
+    } catch (e) { setSync("synced"); handleError(e, "bulk upload case"); }
+  });
+  document.body.appendChild(input);
+  input.click();
+};
 A.backupCases = () => {
   try { const n = backup.exportBackup(); toast("Cadangan " + n + " case diunduh.", "success"); }
   catch (e) { handleError(e, "membuat cadangan"); }

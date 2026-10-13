@@ -73,7 +73,7 @@ const FIELD_LABEL = {
 export const ACTION_LABEL = {
   CREATE: "Case dibuat", UPDATE: "Case diperbarui", STATUS_CHANGE: "Status diubah", CLOSE: "Case ditutup", REOPEN: "Case dibuka lagi",
   SOFT_DELETE: "Case dihapus", RESTORE: "Case dipulihkan", BULK_SOFT_DELETE: "Dihapus massal", SYSTEM_REEVALUATE: "Evaluasi ulang otomatis",
-  IMPORT_RESTORE: "Dipulihkan dari cadangan", FORCE_OVERWRITE: "Ditimpa (supervisor)"
+  IMPORT_RESTORE: "Dipulihkan dari cadangan", FORCE_OVERWRITE: "Ditimpa (supervisor)", BULK_UPLOAD: "Bulk upload"
 };
 export function describeEvent(ev) {
   const parts = [];

@@ -197,6 +197,10 @@ export function mountFindings(root, app) {
                 onChange: (e) => { colVis = Object.assign({}, colVis, { [c.key]: e.target.checked }); saveCols(colVis); render(); } }), c.label);
             }))) : null,
         button("Export hasil filter", { size: "sm", icon: "download", attrs: { disabled: !total || store.get().busy.exporting }, onClick: actions.exportFiltered }),
+        v.mode === "nopen" ? button("Template case", { size: "sm", icon: "sheet", attrs: { disabled: !total || store.get().busy.exporting,
+          title: "Unduh template Excel berisi baris yang sedang tampil, untuk mengisi case secara massal" }, onClick: actions.bulkTemplate }) : null,
+        v.mode === "nopen" ? button("Upload case", { size: "sm", icon: "upload", attrs: { title: "Unggah template yang sudah diisi; tampil pratinjau dulu sebelum disimpan" },
+          onClick: actions.bulkUpload }) : null,
         button("Reset filter", { size: "sm", variant: "ghost", icon: "refresh", onClick: actions.resetFilters })),
       v.mode === "nopen" && v.filter === "abnormal" ? h("div", { class: "ib-toolbar-row ib-substatus", role: "group", "aria-label": "Status case temuan abnormal" },
         h("span", { class: "gs-label" }, "Status temuan:"),

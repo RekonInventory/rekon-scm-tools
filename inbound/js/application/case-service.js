@@ -156,7 +156,8 @@ export function createCaseService(deps) {
       if (res && res.removed) return { status: "empty" };
       if (res && res.unchanged) return { status: "unchanged", id: caseId };
       try {
-        const row = await persist(caseId, isNew, { force: input.force, expectedVersion: input.expectedVersion });
+        // input.action (mis. "BULK_UPLOAD") hanya label aksi di audit server; aturan simpan tidak berubah
+        const row = await persist(caseId, isNew, { force: input.force, expectedVersion: input.expectedVersion, action: input.action || null });
         onChange({ type: "saved", id: row.id });
         return { status: "saved", id: row.id, row };
       } catch (e) {
