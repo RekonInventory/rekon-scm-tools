@@ -3020,10 +3020,10 @@ function cell(v,t,nk,batal){
   if(t===DT) return '<td class="detail"><button class="'+(v?"has":"")+'" data-nk="'+esc(nk)+
     '" title="Rincian, kategori, group ID, dan riwayat perubahan">\u22ef</button></td>';
   if(t===CS) return '<td class="casecell" data-nk="'+esc(nk)+'" title="Klik untuk membuka case baris ini">' +
-    (v ? '<span class="pill '+esc(v.kelas)+'">'+esc(v.teks)+"</span>" : "") + "</td>";
+    (v ? '<span class="pill '+esc(v.kelas)+'">'+esc(v.teks)+"</span>"+(v.sub ? '<span class="oc-sub">'+esc(v.sub)+"</span>" : "") : "") + "</td>";
   // mode case: catatan & penyesuaian diedit lewat laci case (cek versi), bukan diketik di sel
   if((t===E || t===J) && window.OBCase && OBCase.aktif())
-    return '<td class="'+(t===E?"edit":"adj")+' ro'+(v?" saved":"")+'" data-nk="'+esc(nk)+'" title="Klik untuk membuka case baris ini">' +
+    return '<td class="'+(t===E?"edit nodisp":"adj")+' ro'+(v?" saved":"")+'" data-nk="'+esc(nk)+'" title="Klik untuk membuka case baris ini">' +
       esc(t===J ? (v===0||v ? fmtN(v) : "") : (v||"")) + "</td>";
   if(t===E) return '<td class="edit'+(v?" saved":"")+'" contenteditable="true" spellcheck="false" ' +
     'data-nk="'+esc(nk)+'" data-ph="tulis catatan\u2026">'+esc(v||"")+"</td>";
@@ -3087,7 +3087,7 @@ function drawTable(){
     return;
   }
   const head = "<thead><tr>" + def.cols.map((c,i)=>
-    '<th data-c="'+i+'"'+(c[2]===DT?' class="nosort"':'')+'>'+esc(c[0])+(sortCol===i?'<span class="ar">'+(sortDir>0?"▲":"▼")+"</span>":"")+"</th>").join("") + "</tr></thead>";
+    '<th data-c="'+i+'"'+(c[2]===DT?' class="nosort"':(c[2]===E && window.OBCase && OBCase.aktif() ? ' class="nodisp"' : ''))+'>'+esc(c[0])+(sortCol===i?'<span class="ar">'+(sortDir>0?"▲":"▼")+"</span>":"")+"</th>").join("") + "</tr></thead>";
   const shown = rows.slice(0,limit);
   const body = "<tbody>" + shown.map(x=>{
     const nk = noteKey(active, x.r);
@@ -4388,7 +4388,13 @@ const paksaTab = {A:false, B:false};
   document.addEventListener("keydown", e=>{ if(e.key === "Escape" && drKey) tutupLaci(); });
   document.addEventListener("click", e=>{
     const b = e.target.closest && e.target.closest("td.detail button, td.casecell, td.ro");
-    if(b && b.dataset.nk) bukaLaci(b.dataset.nk);
+    if(b && b.dataset.nk){ bukaLaci(b.dataset.nk); return; }
+    // mode case: klik di mana pun pada baris membuka panel detail (seperti Inbound)
+    if(window.OBCase && OBCase.aktif() && R && (active === "A" || active === "B") && e.target.closest && !e.target.closest("a,button,input,select,textarea")){
+      const tr = e.target.closest("#tablewrap tbody tr");
+      const row = tr && dataOf(active)[+tr.dataset.i];
+      if(row) bukaLaci(noteKey(active, row));
+    }
   });
 })();
 

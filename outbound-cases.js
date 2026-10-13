@@ -203,7 +203,11 @@
       segarkan();
       if(st.laci && k && k === st.laci.key){
         st.timeline.delete(k);
-        if(st.laci.edit) tandaiBerubah(); else renderLaci();
+        // jangan menimpa isian yang sedang diketik; tandai hanya bila case yang diedit memang berubah di server
+        const e = st.laci.edit, cur = e && e.id ? st.rows.get(e.id) : null;
+        if(!e) renderLaci();
+        else if(e.id && (!cur || cur.version > e.version)) tandaiBerubah();
+        else renderRingkasanTanpaForm();
         muatTimeline(k);
       }
     }, 250);
@@ -287,7 +291,9 @@
     if(!list || !list.length) return null;
     const terbuka = list.filter(c => c.status !== "CLOSED").length;
     const s = statusGabungan(list);
-    return {teks:s + (list.length > 1 ? " · " + list.length + " case" : ""), kelas:PILL_CASE[s] || "", n:list.length, aktif:terbuka};
+    const sub = list.length === 1 ? labelCase(list[0]) + (list[0].pic ? " · " + list[0].pic : "")
+      : ["OPEN", "IN PROGRESS", "CLOSED"].map(x => { const n = list.filter(c => c.status === x).length; return n ? n + " " + x.toLowerCase() : ""; }).filter(Boolean).join(" · ");
+    return {teks:s + (list.length > 1 ? " · " + list.length + " case" : ""), sub, kelas:PILL_CASE[s] || "", n:list.length, aktif:terbuka};
   }
   function ringkasHitung(){
     let open = 0, prog = 0, closed = 0;
@@ -354,70 +360,129 @@
     }).catch(e => gltToast("Evaluasi ulang penyesuaian gagal: " + pesanGalat(e), "err"));
   }
 
-  /* ------------------------------------------------------------ laci rincian */
+  /* ------------------------------------------------------------ panel detail (seperti Inbound) */
+  const SECTIONS = {ringkasan:true, data:true, penjelasan:true, cases:true, timeline:false};
+  const FLOW = [["OPEN", "Open", "danger"], ["IN PROGRESS", "In Progress", "warning"], ["CLOSED", "Closed", "success"]];
+  const TIPE_URUT = ["TIDAK_ADA_DI_LAPORAN", "TIDAK_ADA_DI_SCM", "TIDAK_ADA_DI_P3BET", "SELISIH_QTY", "SELISIH_TANGGAL", "SELISIH_QTY_TGL",
+                     "PEMBATALAN", "OUTBOUND_HARI_INI", "LAINNYA"];
+  function umur(iso){
+    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if(!isFinite(m)) return "-";
+    if(m < 1) return "baru saja"; if(m < 60) return m + " menit";
+    const j = Math.floor(m / 60); if(j < 24) return j + " jam";
+    return Math.floor(j / 24) + " hari";
+  }
+  function terakhir(c){
+    const a = Array.isArray(c.audit) ? c.audit : [];
+    return a.length ? a[a.length - 1].what : "";
+  }
   function bukaLaci(k){
     if(!cariBaris(k)) return;
     drKey = k;
-    st.laci = {key:k, edit:null, berubah:false};
+    st.laci = {key:k, edit:null, berubah:false, dirty:false};
     renderLaci();
     $("#drawer").classList.add("on"); $("#drawer").setAttribute("aria-hidden", "false");
     $("#scrim").classList.add("on");
     muatTimeline(k);
   }
-  function tutupLaci(){ st.laci = null; const s = $("#drSave"); if(s){ s.textContent = "Simpan"; s.disabled = false; } }
+  function tutupLaci(){ st.laci = null; }
+  function renderRingkasanTanpaForm(){ /* form sedang dibuka: biarkan isiannya apa adanya */ }
   function tandaiBerubah(){
     if(!st.laci) return;
     st.laci.berubah = true;
     const el = document.getElementById("obcStale"); if(el) el.hidden = false;
   }
-  function kartuCase(c, sedangEdit){
+  /* selisih dengan total penyesuaian tertentu (rumus sama dengan selisihAkhir) */
+  function selisihDenganAdj(tab, r, adj){
+    const q = sisiQty(tab, r);
+    return q.p3betKosong && !q.lawanKosong ? (q.p3bet + adj) - q.lawan : q.p3bet - (q.lawan + adj);
+  }
+  function nav(k, arah){
+    if(!R) return null;
+    const tab = k.split("|")[0];
+    if(tab !== active) return null;
+    const baris = filtered().map(x => noteKey(tab, x.r));
+    const i = baris.indexOf(k);
+    return i < 0 ? null : baris[i + arah] || null;
+  }
+  function seksi(kunci, judul, isi, hitung){
+    const buka = SECTIONS[kunci];
+    return '<section class="obd-sec"><h3><button type="button" class="obd-disc" data-obd-sec="' + kunci + '" aria-expanded="' + buka + '">' +
+      '<span class="obd-chev">' + (buka ? "▾" : "▸") + "</span>" + esc(judul) + "</button>" +
+      (hitung !== undefined ? '<span class="obd-count">' + hitung + "</span>" : "") + "</h3>" +
+      '<div class="obd-body"' + (buka ? "" : " hidden") + ">" + isi + "</div></section>";
+  }
+  function kv(pasangan){
+    return '<dl class="obd-kv">' + pasangan.filter(Boolean).map(p => "<div><dt>" + esc(p[0]) + "</dt><dd>" + p[1] + "</dd></div>").join("") + "</dl>";
+  }
+  function kartuCase(c, aktif){
+    const f = FLOW.find(x => x[0] === c.status) || FLOW[0];
     const adj = Number(c.qty_adj) || 0;
-    const baris = [];
-    if(adj) baris.push("Penyesuaian qty <b>" + esc(fmtN(adj)) + "</b>" +
-      (c.adj_side ? ' <span class="obc-tag">data pembanding belum tersedia — ditutup otomatis saat data masuk</span>' : "") +
+    const la = terakhir(c);
+    const infoAdj = [];
+    if(adj) infoAdj.push("Penyesuaian qty <b>" + esc(fmtN(adj)) + "</b>" + (c.adj_side ? " · data pembanding belum tersedia (ditutup otomatis saat data masuk)" : "") +
       (c.qty_adj_note ? " · " + esc(c.qty_adj_note) : "") + (c.group_id ? " · group <b>" + esc(c.group_id) + "</b>" : ""));
     if(!c.adj_side && c.qty_expected !== null && c.qty_expected !== undefined)
-      baris.push("Diharapkan <b>" + esc(fmtN(c.qty_expected)) + "</b> · data terbaru <b>" + esc(fmtN(c.qty_actual)) +
-                 "</b> · selisih <b>" + esc(fmtN(c.qty_difference)) + "</b>");
-    return '<div class="obc-case' + (sedangEdit ? " edit" : "") + '" data-id="' + esc(c.id) + '">' +
-      '<div class="obc-head"><b class="mono">' + esc(labelCase(c)) + '</b> <span class="pill ' + (PILL_CASE[c.status] || "") + '">' + esc(c.status) + "</span>" +
-        ' <span class="obc-type">' + esc(LABEL_TIPE[c.case_type] || c.case_type || "") + "</span></div>" +
-      '<div class="obc-meta">PIC <b>' + esc(c.pic || "—") + "</b>" + (c.kategori ? " · " + esc(c.kategori) : "") + "</div>" +
-      (c.remark ? '<div class="obc-remark">' + esc(c.remark) + "</div>" : "") +
-      (c.action_taken ? '<div class="obc-meta">Tindakan: ' + esc(c.action_taken) + "</div>" : "") +
-      baris.map(x => '<div class="obc-meta">' + x + "</div>").join("") +
-      '<div class="obc-foot"><span>v' + esc(c.version) + " · diubah " + esc(fmtTs(c.updated_at)) + " oleh " + esc(c.user_name || "—") +
-        (c.status === "CLOSED" && c.closed_by ? " · ditutup " + esc(c.closed_by) : "") + "</span>" +
-        '<span><button class="btn mini" data-obc-edit="' + esc(c.id) + '">Edit</button> ' +
-        '<button class="btn mini danger" data-obc-hapus="' + esc(c.id) + '">Hapus</button></span></div>' +
-    "</div>";
+      infoAdj.push("Diharapkan <b>" + esc(fmtN(c.qty_expected)) + "</b> · data terbaru <b>" + esc(fmtN(c.qty_actual)) + "</b> · selisih <b>" + esc(fmtN(c.qty_difference)) + "</b>");
+    return '<li class="obd-case' + (aktif ? " is-active" : "") + '">' +
+      '<div class="obd-case-top"><b class="mono">' + esc(labelCase(c)) + '</b>' +
+        '<span class="obd-badge is-' + f[2] + '">' + esc(f[1]) + "</span>" +
+        '<span class="obd-badge">' + esc(LABEL_TIPE[c.case_type] || c.case_type || "") + "</span></div>" +
+      (c.remark ? '<p class="obd-remark">' + esc(c.remark) + "</p>" : '<p class="obd-remark obd-muted">(tanpa catatan)</p>') +
+      (c.action_taken ? '<p class="obd-action">✓ Tindakan: ' + esc(c.action_taken) + "</p>" : "") +
+      infoAdj.map(x => '<p class="obd-info">' + x + "</p>").join("") +
+      '<div class="obd-case-meta"><span>PIC ' + esc(c.pic || "-") + "</span><span>umur " + esc(umur(c.created_at)) + "</span>" +
+        "<span>diperbarui " + esc(fmtTs(c.updated_at)) + "</span>" + (la ? '<span class="obd-last" title="' + esc(la) + '">terakhir: ' + esc(la) + "</span>" : "") + "</div>" +
+      '<div class="obd-case-act"><button type="button" class="btn mini" data-obc-edit="' + esc(c.id) + '"' + (aktif ? " disabled" : "") + ">" +
+        (aktif ? "Sedang diedit" : "Buka / ubah") + "</button></div></li>";
   }
-  function formHtml(L, tab, r, lama){
+  function formEditor(L, tab, r, lama){
     const q = sisiQty(tab, r);
     const bisaBelum = q.lawanKosong || q.p3betKosong;
-    const v = lama || {status:"OPEN", pic:namaSaya(), kategori:"", remark:"", action_taken:"", qty_adj:0, qty_adj_note:"", group_id:"",
-                       adj_side:null};
+    const v = lama || {status:"OPEN", remark:"", action_taken:"", qty_adj:0, qty_adj_note:"", group_id:"", adj_side:null,
+                       case_type:tipeDariStatus(r.status)};
     const belum = lama ? !!lama.adj_side : bisaBelum;
-    const opt = (list, cur) => list.map(x => '<option value="' + esc(x) + '"' + (x === cur ? " selected" : "") + ">" + esc(x) + "</option>").join("");
-    const kat = KATEGORI_CATATAN.indexOf(v.kategori || "") < 0 && v.kategori ? KATEGORI_CATATAN.concat([v.kategori]) : KATEGORI_CATATAN;
-    return '<div class="obc-form">' +
-      "<h4>" + (lama ? "Edit case " + esc(labelCase(lama)) + " (versi " + esc(L.edit.version) + ")" : "Case baru") + "</h4>" +
-      '<div class="obc-stale" id="obcStale" hidden>⚠ Case pada baris ini baru saja diubah orang lain. Kalau Anda menyimpan, sistem akan memeriksa bentroknya.</div>' +
-      '<div class="dfield"><label for="obcStat">Status</label><select id="obcStat">' + opt(STATUS_CASE, v.status) + "</select></div>" +
-      '<div class="dfield"><label for="obcKat">Kategori</label><select id="obcKat"><option value="">(tanpa kategori)</option>' + opt(kat, v.kategori || "") + "</select></div>" +
-      '<div class="dfield"><label>PIC (otomatis = orang yang menyimpan, sama seperti Inbound)</label>' +
-        '<div class="dmeta"><b>' + esc(namaSaya()) + "</b>" + (lama && lama.pic && lama.pic !== namaSaya() ? " (sebelumnya " + esc(lama.pic) + ")" : "") + "</div></div>" +
-      '<div class="dfield"><label for="obcRemark">Catatan</label><textarea id="obcRemark">' + esc(v.remark || "") + "</textarea></div>" +
-      '<div class="dfield"><label for="obcAction">Tindakan</label><textarea id="obcAction" rows="2">' + esc(v.action_taken || "") + "</textarea></div>" +
-      '<div class="dfield"><label for="obcQty">Qty penyesuaian (kosong = tidak ada)</label><input type="number" step="any" id="obcQty" value="' +
-        esc(Number(v.qty_adj) ? v.qty_adj : "") + '"></div>' +
-      (bisaBelum || belum ? '<label class="obc-check"><input type="checkbox" id="obcBelum"' + (belum ? " checked" : "") + "> " +
-        "Data pembanding belum tersedia — penyesuaian ini ditutup otomatis saat datanya masuk (kalau masih selisih, dibuat case lanjutan)</label>" : "") +
-      '<div class="dfield"><label for="obcReason">Alasan penyesuaian</label><input id="obcReason" value="' + esc(v.qty_adj_note || "") + '"></div>' +
-      '<div class="dfield"><label for="obcGroup">Adjustment Group ID — isi sama pada dua baris yang sebenarnya satu koreksi fisik</label>' +
-        '<input class="mono" id="obcGroup" placeholder="' + esc(grupBaris(tab, r) || "otomatis") + '" value="' + esc(v.group_id || "") + '"></div>' +
-      '<button class="btn" id="obcBatal" type="button">Batal edit</button>' +
-    "</div>";
+    const stale = lama && L.edit.version && st.rows.get(lama.id) && st.rows.get(lama.id).version > L.edit.version;
+    const tipe = TIPE_URUT.map(t => '<option value="' + t + '"' + (t === (v.case_type || "LAINNYA") ? " selected" : "") + ">" + esc(LABEL_TIPE[t]) + "</option>").join("");
+    return '<form class="obd-editor" id="obcForm" onsubmit="return false">' +
+      '<div class="obd-alert" id="obcStale"' + (stale || L.berubah ? "" : " hidden") + ' role="alert">⚠ Case ini baru saja diubah oleh ' +
+        esc(lama ? (st.rows.get(lama.id) || lama).user_name || "pengguna lain" : "pengguna lain") +
+        '. Simpan akan memicu pemeriksaan konflik. <button type="button" class="btn mini" id="obcMuat">Muat ulang</button></div>' +
+      '<div class="obd-field"><span class="obd-label">Status workflow</span><div class="obd-flow" role="radiogroup" id="obcFlow">' +
+        FLOW.map((f, i) => (i ? '<span class="obd-flow-sep">›</span>' : "") +
+          '<button type="button" role="radio" class="obd-flow-step is-' + f[2] + '" data-st="' + f[0] + '" aria-checked="' + (v.status === f[0]) + '" tabindex="' + (v.status === f[0] ? 0 : -1) + '">' + esc(f[1]) + "</button>").join("") +
+      "</div></div>" +
+      '<div class="obd-grid"><div class="obd-field"><label class="obd-label" for="obcTipe">Jenis case</label><select id="obcTipe" class="obd-input">' + tipe + "</select></div>" +
+        '<div class="obd-field"><span class="obd-label">PIC (otomatis)</span><div class="obd-readonly" title="PIC otomatis = orang yang terakhir menyimpan case">☺ ' + esc(namaSaya()) + "</div></div></div>" +
+      '<div class="obd-field"><label class="obd-label" for="obcRemark">Temuan / catatan (remark)</label><textarea id="obcRemark" class="obd-input" rows="4" maxlength="2000" placeholder="Apa temuannya, apa yang sudah dicek, hasilnya…">' + esc(v.remark || "") + "</textarea>" +
+        '<span class="obd-hint">Fakta temuan & hasil pengecekan. Maks. 2000 karakter.</span></div>' +
+      '<div class="obd-field"><label class="obd-label" for="obcAction">Tindakan yang diambil</label><input id="obcAction" class="obd-input" maxlength="300" value="' + esc(v.action_taken || "") + '" placeholder="mis. Konfirmasi ke tim gudang, koreksi di SCM"></div>' +
+      '<fieldset class="obd-fieldset"><legend>Penyesuaian QTY</legend>' +
+        '<p class="obd-hint">Data asli tidak diubah; penyesuaian hanya memengaruhi selisih akhir. Positif menambah sisi pembanding, negatif mengurangi.</p>' +
+        '<div class="obd-grid"><div class="obd-field"><label class="obd-label" for="obcQty">Penyesuaian QTY</label><input id="obcQty" class="obd-input" inputmode="decimal" value="' + esc(Number(v.qty_adj) ? v.qty_adj : 0) + '"></div>' +
+          '<div class="obd-field"><label class="obd-label" for="obcReason">Keterangan QTY</label><input id="obcReason" class="obd-input" maxlength="300" value="' + esc(v.qty_adj_note || "") + '" placeholder="alasan penyesuaian QTY"></div></div>' +
+        (bisaBelum || belum ? '<label class="obd-check"><input type="checkbox" id="obcBelum"' + (belum ? " checked" : "") + "> Data pembanding belum tersedia — penyesuaian ditutup otomatis saat datanya masuk (kalau masih selisih, dibuat case lanjutan)</label>" : "") +
+        '<div class="obd-field"><label class="obd-label" for="obcGroup">Adjustment Group ID <span class="obd-muted">(isi sama pada dua baris yang sebenarnya satu koreksi fisik)</span></label>' +
+          '<input id="obcGroup" class="obd-input mono" placeholder="' + esc(grupBaris(tab, r) || "otomatis") + '" value="' + esc(v.group_id || "") + '"></div>' +
+        '<div class="obd-preview" id="obcPreview" aria-live="polite"></div></fieldset>' +
+      '<div class="obd-actions"><button type="button" class="btn primary" id="obcSimpan">' + (lama ? "Simpan perubahan" : "Buat case") + "</button>" +
+        '<button type="button" class="btn" id="obcBatal">Batal</button><span class="obd-spacer"></span>' +
+        (lama ? '<button type="button" class="btn danger" id="obcHapus">Hapus case</button>' : "") + "</div>" +
+      '<p class="obd-meta">' + (lama ? "Case " + esc(labelCase(lama)) + " · dibuat " + esc(fmtTs(lama.created_at)) + (lama.created_by_name ? " oleh " + esc(lama.created_by_name) : "") +
+        " · diperbarui " + esc(fmtTs(lama.updated_at)) + " · versi " + esc(lama.version) : "Case baru — belum tersimpan.") + "</p></form>";
+  }
+  function pratinjauSelisih(tab, r, lama){
+    const el = document.getElementById("obcPreview"); if(!el) return;
+    const input = document.getElementById("obcQty");
+    const baru = Number(String(input.value).replace(",", ".")) || 0;
+    const lain = (nilaiAdjust(tab, r) || 0) - (lama ? Number(lama.qty_adj) || 0 : 0);
+    const q = sisiQty(tab, r);
+    const awal = q.p3bet - q.lawan;
+    const sebelum = selisihDenganAdj(tab, r, lain + (lama ? Number(lama.qty_adj) || 0 : 0));
+    const sesudah = selisihDenganAdj(tab, r, lain + baru);
+    el.innerHTML = "Selisih mentah: <b>" + esc(fmtN(awal)) + "</b> → selisih akhir dengan penyesuaian ini: <b class=\"" +
+      (sesudah === 0 ? "obd-ok" : "obd-bad") + "\">" + esc(fmtN(sesudah)) + "</b>" +
+      (baru !== (lama ? Number(lama.qty_adj) || 0 : 0) ? " <span class=\"obd-muted\">(sebelum diubah: " + esc(fmtN(sebelum)) + ")</span>" : "");
   }
   function renderLaci(){
     const L = st.laci; if(!L) return;
@@ -427,58 +492,116 @@
     const q = sisiQty(tab, r);
     const list = st.byKey.get(L.key) || [];
     const lama = L.edit && L.edit.id ? st.rows.get(L.edit.id) : null;
-    $("#drKey").textContent = "Rekon " + (tab === "A" ? "1" : "2") + " · " + list.length + " case";
-    $("#drTitle").textContent = r.nomorDaftar || r.kontainer || "(tanpa nomor)";
-    $("#drBody").innerHTML =
-      "<h4>Identitas baris</h4>" +
-      '<div class="dmeta">Record key: <b>' + esc(L.key) + "</b><br>" +
-        "Nomor daftar: <b>" + esc(r.nomorDaftar || "—") + "</b><br>" +
-        "Container: <b>" + esc(r.kontainer || "—") + "</b><br>" +
-        "CLP: <b>" + esc(r.clp || "—") + "</b>" + (r.clpSumber ? " (" + esc(r.clpSumber) + ")" : "") + "<br>" +
-        "Tanggal: <b>" + esc(fmtD(tglRow(r)) || "—") + "</b></div>" +
-      "<h4>Status rekonsiliasi</h4>" +
-      '<div class="dmeta">Qty P3BET: <b>' + (q.p3betKosong ? "—" : fmtN(q.p3bet)) + "</b> &nbsp; Qty pembanding: <b>" +
-        (q.lawanKosong ? "—" : fmtN(q.lawan)) + "</b><br>" +
-        "Status awal: <b>" + esc(r.status) + "</b> &nbsp; Penyesuaian total: <b>" + fmtN(nilaiAdjust(tab, r)) + "</b><br>" +
-        "Selisih akhir: <b>" + fmtN(selisihAkhir(tab, r)) + "</b> &nbsp; Status akhir: <b>" + esc(statusEfektif(tab, r)) + "</b><br>" +
-        '<span style="color:var(--text-muted)">' + esc(r.keterangan || "") + "</span></div>" +
-      "<h4>Case pada baris ini (" + list.length + ")</h4>" +
-      (list.length ? list.map(c => kartuCase(c, lama && lama.id === c.id)).join("") : '<div class="dmeta">Belum ada case. Klik <b>Tambah case</b> di bawah.</div>') +
-      (L.edit ? formHtml(L, tab, r, lama) : "") +
-      "<h4>Riwayat audit (server)</h4>" +
-      '<div class="daudit" id="obcTimeline">' + timelineHtml(L.key) + "</div>";
-    const s = $("#drSave");
-    s.textContent = L.edit ? (lama ? "Simpan perubahan" : "Simpan case baru") : "Tambah case";
-    s.disabled = false;
-    if(L.berubah) tandaiBerubah();
+    if(L.edit && L.edit.id && !lama) L.edit = null;
+    const lbl = tab === "A" ? "laporan" : "SCM";
+    const namaLawan = tab === "A" ? "Laporan " + (r.sumber && r.sumber !== "—" ? r.sumber : "Adidas/Nike") : "Outbound SCM";
+    let qa = 0; list.forEach(c => { if(c.status !== "CLOSED") qa += Number(c.qty_adj) || 0; });
+    const kelas = KELAS_STATUS(statusEfektif(tab, r));
+    const baris = filtered().map(x => noteKey(tab, x.r));
+    const idx = tab === active ? baris.indexOf(L.key) : -1;
+    $("#drKey").textContent = "Rekon " + (tab === "A" ? "1" : "2") + " · " + (tab === "A" ? "P3BET ↔ Laporan" : "P3BET ↔ SCM") + " · " + list.length + " case";
+    $("#drTitle").textContent = "Nopen " + (r.nomorDaftar || r.kontainer || "(tanpa nomor)");
+    const navHtml = '<span class="obd-nav"><button type="button" class="btn mini" data-obd-nav="-1"' + (idx <= 0 ? " disabled" : "") + ' title="Baris sebelumnya">▲</button> ' +
+      '<button type="button" class="btn mini" data-obd-nav="1"' + (idx < 0 || idx >= baris.length - 1 ? " disabled" : "") + ' title="Baris berikutnya">▼</button></span>';
+    const adjNote = qa ? '<div class="obd-adj">setelah penyesuaian: ' + esc(fmtN(selisihAkhir(tab, r))) + "</div>" : "";
+    $("#drBody").innerHTML = '<div class="obd-detail">' +
+      '<div class="obd-status"><span class="obd-badge is-' + (kelas === "match" ? "success" : kelas === "bad" ? "danger" : kelas === "today" ? "info" : kelas === "batal" ? "" : "warning") + '">' + esc(statusEfektif(tab, r)) + "</span>" + navHtml + "</div>" +
+      seksi("ringkasan", "Ringkasan", kv([
+        ["Nomor daftar", esc(r.nomorDaftar || "—")], ["Tgl daftar", esc(fmtD(r.tglDaftar || tglRow(r)) || "—")],
+        ["Container", esc(r.kontainer || "—")], ["CLP", esc(r.clp || "—") + (r.clpSumber ? ' <span class="obd-muted">(' + esc(r.clpSumber) + ")</span>" : "")],
+        ["Kategori", esc(r.brand || "—")], tab === "B" ? ["No job SCM", esc(r.job || "—")] : ["Tgl stuffing laporan", esc(fmtD(r.tglLap) || "—")],
+        ["Status awal", esc(r.status)], ["Case", list.length ? list.length + " case (" + list.filter(c => c.status !== "CLOSED").length + " aktif)" : "Belum ada"]])) +
+      seksi("data", "Perbandingan data",
+        '<table class="obd-compare"><thead><tr><th></th><th>P3BET</th><th>' + esc(namaLawan) + '</th><th class="num">Selisih</th></tr></thead><tbody>' +
+        '<tr><th>QTY</th><td class="num">' + (q.p3betKosong ? "—" : esc(fmtN(q.p3bet))) + '</td><td class="num">' + (q.lawanKosong ? "—" : esc(fmtN(q.lawan))) + "</td>" +
+          '<td class="num"><span class="' + (q.p3bet - q.lawan === 0 ? "obd-ok" : "obd-bad") + '">' + esc(fmtN(q.p3bet - q.lawan)) + "</span>" + adjNote + "</td></tr>" +
+        (tab === "A" ? '<tr><th>Tgl</th><td>' + esc(fmtD(r.tglDaftar) || "—") + "</td><td>" + esc(fmtD(r.tglLap) || "—") + '</td><td class="num">' + (r.selisihHari === null || r.selisihHari === undefined ? "—" : esc(r.selisihHari + " hari")) + "</td></tr>" :
+          '<tr><th>Tgl</th><td>' + esc(fmtD(r.tglDaftar) || "—") + "</td><td>" + esc(fmtD(r.tglScm) || "—") + '</td><td class="num">—</td></tr>') +
+        "</tbody></table>" + (r.shipper ? kv([["Shipper laporan", esc(r.shipper)]]) : "") + (r.exportir ? kv([["Exportir SCM", esc(r.exportir)]]) : "")) +
+      seksi("penjelasan", "Penjelasan & tindakan", '<p class="obd-explain">' + esc(r.keterangan || "—") + "</p>" +
+        (r.status === OUTBOUND_HARI_INI ? '<div class="obd-alert is-info">⏱ Outbound hari ini: sumber lain biasanya baru diperbarui besok, jadi baris ini tidak dihitung sebagai selisih.</div>' : "")) +
+      seksi("cases", "Case & tindak lanjut",
+        (list.length ? '<ul class="obd-case-list">' + list.map(c => kartuCase(c, lama && lama.id === c.id)).join("") + "</ul>" : '<p class="obd-muted">Belum ada case untuk baris ini.</p>') +
+        (L.edit ? '<div class="obd-editor-wrap"><h4>' + (lama ? "Ubah case " + esc(labelCase(lama)) : "Case baru") + "</h4>" + formEditor(L, tab, r, lama) + "</div>"
+                : '<button type="button" class="btn ' + (list.length ? "" : "primary") + '" id="obcTambah">+ Tambah case</button>'), list.length) +
+      seksi("timeline", "Riwayat aktivitas (audit)", '<div id="obcTimeline">' + timelineHtml(L.key) + "</div>") +
+      "</div>";
+    pasangHandler(L, tab, r, lama);
+  }
+  function pasangHandler(L, tab, r, lama){
     const el = $("#drBody");
+    el.querySelectorAll("[data-obd-sec]").forEach(x => x.addEventListener("click", () => {
+      SECTIONS[x.dataset.obdSec] = !SECTIONS[x.dataset.obdSec]; renderLaci();
+      if(x.dataset.obdSec === "timeline" && SECTIONS.timeline) muatTimeline(L.key);
+    }));
+    el.querySelectorAll("[data-obd-nav]").forEach(x => x.addEventListener("click", () => {
+      const k = nav(L.key, Number(x.dataset.obdNav));
+      if(k){ const dirty = L.dirty; if(dirty) gltToast("Perubahan yang belum disimpan dibuang.", "warn", 3000); bukaLaci(k); }
+    }));
     el.querySelectorAll("[data-obc-edit]").forEach(x => x.addEventListener("click", () => {
       const c = st.rows.get(x.dataset.obcEdit); if(!c) return;
-      st.laci.edit = {id:c.id, version:c.version}; st.laci.berubah = false; renderLaci();
+      st.laci.edit = {id:c.id, version:c.version}; st.laci.berubah = false; st.laci.dirty = false; renderLaci();
       const f = document.getElementById("obcRemark"); if(f) f.focus();
     }));
-    el.querySelectorAll("[data-obc-hapus]").forEach(x => x.addEventListener("click", () => hapus(x.dataset.obcHapus)));
-    const bt = document.getElementById("obcBatal");
-    if(bt) bt.addEventListener("click", () => { st.laci.edit = null; st.laci.berubah = false; renderLaci(); });
+    const tambah = document.getElementById("obcTambah");
+    if(tambah) tambah.addEventListener("click", () => {
+      st.laci.edit = {id:null, version:null}; st.laci.berubah = false; st.laci.dirty = false; renderLaci();
+      const f = document.getElementById("obcRemark"); if(f) f.focus();
+    });
+    const form = document.getElementById("obcForm");
+    if(!form) return;
+    const tandai = () => { st.laci.dirty = true; };
+    form.addEventListener("input", tandai); form.addEventListener("change", tandai);
+    const flow = document.getElementById("obcFlow");
+    function setStatus(s, fokus){
+      flow.dataset.val = s;
+      flow.querySelectorAll("[role=radio]").forEach(b => { const on = b.dataset.st === s; b.setAttribute("aria-checked", String(on)); b.tabIndex = on ? 0 : -1; if(on && fokus) b.focus(); });
+      tandai();
+    }
+    flow.dataset.val = (lama ? lama.status : "OPEN");
+    flow.querySelectorAll("[role=radio]").forEach(b => {
+      b.addEventListener("click", () => setStatus(b.dataset.st));
+      b.addEventListener("keydown", e => {
+        if(e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        e.preventDefault();
+        const urut = FLOW.map(f => f[0]), i = urut.indexOf(flow.dataset.val);
+        setStatus(urut[(i + (e.key === "ArrowRight" ? 1 : urut.length - 1)) % urut.length], true);
+      });
+    });
+    const qty = document.getElementById("obcQty");
+    qty.addEventListener("input", () => pratinjauSelisih(tab, r, lama));
+    pratinjauSelisih(tab, r, lama);
+    document.getElementById("obcSimpan").addEventListener("click", simpanLaci);
+    document.getElementById("obcBatal").addEventListener("click", () => { st.laci.edit = null; st.laci.berubah = false; st.laci.dirty = false; renderLaci(); });
+    const muat = document.getElementById("obcMuat");
+    if(muat) muat.addEventListener("click", () => {
+      const cur = lama && st.rows.get(lama.id);
+      st.laci.edit = cur ? {id:cur.id, version:cur.version} : null; st.laci.berubah = false; st.laci.dirty = false; renderLaci();
+    });
+    const hp = document.getElementById("obcHapus");
+    if(hp && lama) hp.addEventListener("click", () => hapus(lama.id));
   }
   function bacaForm(){
     const v = id => { const el = document.getElementById(id); return el ? String(el.value).trim() : ""; };
-    const qRaw = v("obcQty");
+    const qRaw = v("obcQty").replace(",", ".");
     const belum = document.getElementById("obcBelum");
-    return {status:v("obcStat") || "OPEN", kategori:v("obcKat"), remark:v("obcRemark"), action:v("obcAction"),
+    const flow = document.getElementById("obcFlow");
+    return {status:(flow && flow.dataset.val) || "OPEN", tipe:v("obcTipe"), remark:v("obcRemark"), action:v("obcAction"),
             qty:qRaw === "" ? 0 : (Number(qRaw) || 0), qtyValid:qRaw === "" || !isNaN(Number(qRaw)),
             reason:v("obcReason"), group:v("obcGroup"), belum:!!(belum && belum.checked)};
   }
-  /* susun baris case dari isian (form laci atau bulk upload) */
+  /* susun baris case dari isian (form panel atau bulk upload) */
   function susunRow(k, tab, r, lama, f){
     const base = lama ? Object.assign({}, lama)
       : Object.assign(r ? identitas(tab, r) : {record_key:k, tab}, {seq:seqBerikut(k), case_type:tipeDariStatus(r ? r.status : ""),
                                                                     audit:[], created_at:nowIso()});
     base.id = idCase(base.record_key, base.seq);
-    // PIC otomatis = orang yang menyimpan (sama dengan Inbound), bukan isian bebas
-    const row = Object.assign(base, {status:f.status, kategori:f.kategori || null, pic:namaSaya(), remark:f.remark || null,
+    // PIC otomatis = orang yang menyimpan (sama dengan Inbound), bukan isian bebas; kategori lama dipertahankan
+    const row = Object.assign(base, {status:f.status, pic:namaSaya(), remark:f.remark || null,
+      case_type:f.tipe && LABEL_TIPE[f.tipe] ? f.tipe : base.case_type,
       action_taken:f.action || null, qty_adj:f.qty, qty_adj_note:f.reason || null, group_id:f.group || null,
       run_id:RUN ? RUN.runId : (base.run_id || null), period_key:periodeKey() || base.period_key || null, updated_at:nowIso()});
+    if(f.kategori !== undefined) row.kategori = f.kategori || null;
     if(f.belum && f.qty){
       let sisi = "LAWAN";
       if(r){ const q = sisiQty(tab, r); sisi = q.lawanKosong ? "LAWAN" : (q.p3betKosong ? "P3BET" : (lama && lama.adj_side) || "LAWAN"); }
@@ -502,22 +625,25 @@
     if(!f.qtyValid){ gltToast("Qty penyesuaian harus berupa angka.", "warn"); return; }
     const lama = L.edit.id ? st.rows.get(L.edit.id) : null;
     if(L.edit.id && !lama){ gltToast("Case ini sudah tidak ada (mungkin dihapus orang lain).", "warn"); L.edit = null; renderLaci(); return; }
-    if(!lama && !f.remark && !f.action && !f.qty){ gltToast("Isi catatan, tindakan, atau qty penyesuaian dulu.", "warn"); return; }
+    if(!lama && !f.remark && !f.action && !f.qty && f.status === "OPEN"){
+      gltToast("Case kosong tidak disimpan — isi catatan, status, tindakan, atau penyesuaian.", "warn"); return;
+    }
     const row = susunRow(L.key, b.tab, b.r, lama, f);
     const ubah = perubahan(lama, row);
+    if(lama && row.case_type !== lama.case_type) ubah.push("Jenis " + (LABEL_TIPE[lama.case_type] || lama.case_type) + " → " + (LABEL_TIPE[row.case_type] || row.case_type));
     // PIC berganti otomatis ke penyimpan; itu saja tidak dihitung sebagai perubahan
-    if(lama && !ubah.some(x => x.indexOf("PIC:") !== 0)){ gltToast("Tidak ada perubahan.", "warn"); L.edit = null; renderLaci(); return; }
+    if(lama && !ubah.some(x => x.indexOf("PIC:") !== 0)){ gltToast("Tidak ada perubahan.", "warn"); L.edit = null; L.dirty = false; renderLaci(); return; }
     row.audit = (lama && Array.isArray(lama.audit) ? lama.audit : []).concat([{at:nowIso(), by:namaSaya(),
       what:(lama ? "" : "Case dibuat: ") + ubah.join("; ")}]);
     await kirim(row, lama ? L.edit.version : null, b.tab, L.key, lama, ubah, {});
   }
   async function kirim(row, expected, tab, k, lama, ubah, opts){
-    const s = $("#drSave"); s.disabled = true;
+    const s = document.getElementById("obcSimpan") || $("#drSave"); s.disabled = true;
     try{
       const hasil = await simpanSatu(row, expected, opts);
       jejak(lama ? "CASE DIUBAH" : "CASE DIBUAT", tab, k, "Case " + labelCase(hasil), lama ? lama.status : "", hasil.status, ubah.join("; "));
       persistRun();
-      if(st.laci){ st.laci.edit = null; st.laci.berubah = false; }
+      if(st.laci){ st.laci.edit = null; st.laci.berubah = false; st.laci.dirty = false; }
       st.timeline.delete(k);
       segarkan(); renderLaci(); muatTimeline(k);
       gltToast("Case " + labelCase(hasil) + " tersimpan.", "ok", 3000);
@@ -873,25 +999,79 @@
     }
   }
 
-  // gaya laci case (sekali)
+  // gaya panel detail case (meniru panel detail Inbound)
   const css = document.createElement("style");
   css.textContent =
-    ".obc-case{border:1px solid var(--border,#E2E8F0);border-radius:10px;padding:10px 12px;margin:8px 0;background:var(--surface,#fff)}" +
-    ".obc-case.edit{border-color:var(--primary,#2563EB);box-shadow:0 0 0 2px var(--primary-soft,#DBEAFE)}" +
-    ".obc-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}" +
-    ".obc-type{font-size:12px;color:var(--text-muted,#64748B)}" +
-    ".obc-meta{font-size:12.5px;color:var(--text-secondary,#475569);margin-top:4px}" +
-    ".obc-remark{margin-top:6px;white-space:pre-wrap;font-size:13px}" +
-    ".obc-tag{display:inline-block;font-size:11px;background:var(--info-bg,#ECFEFF);color:#0E7490;border-radius:999px;padding:1px 8px}" +
-    ".obc-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;font-size:11.5px;color:var(--text-muted,#64748B);flex-wrap:wrap}" +
-    ".obc-form{border-top:1px dashed var(--border-strong,#CBD5E1);margin-top:12px;padding-top:6px}" +
-    ".obc-check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin:6px 0 10px}" +
-    ".obc-stale{background:var(--warning-bg,#FFFBEB);border:1px solid var(--warning-border,#FDE68A);border-radius:8px;padding:6px 10px;font-size:12.5px;margin-bottom:8px}" +
-    "td.casecell,td.ro{cursor:pointer}" +
-    "td.ro:hover{outline:1px dashed var(--primary,#2563EB);outline-offset:-3px}" +
-    ".ob-bulk{display:none}" + "body.ob-case-mode .ob-bulk{display:inline-flex}";
+    "body.ob-case-mode .drawer{width:min(600px,100%)}" +
+    "body.ob-case-mode .drawer-foot{display:none}" +
+    "body.ob-case-mode .drawer-body{padding:14px 16px 28px;background:var(--surface-muted,#F8FAFC)}" +
+    "body.ob-case-mode th.nodisp,body.ob-case-mode td.nodisp{display:none}" +
+    "body.ob-case-mode #tablewrap tbody tr{cursor:pointer}" +
+    "td.casecell .oc-sub{display:block;font-family:var(--mono);font-size:10.5px;color:var(--text-muted,#64748B);margin-top:2px;white-space:nowrap}" +
+    ".obd-detail{display:flex;flex-direction:column;gap:10px;font-family:var(--sans,inherit)}" +
+    ".obd-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap}" +
+    ".obd-nav{margin-left:auto;display:inline-flex;gap:4px}" +
+    ".obd-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;border:1px solid var(--border,#E2E8F0);background:var(--surface,#fff);font-size:11.5px;font-weight:600;color:var(--text-secondary,#475569)}" +
+    ".obd-badge.is-danger{background:var(--danger-bg,#FEF2F2);border-color:var(--danger-border,#FECACA);color:#991B1B}" +
+    ".obd-badge.is-warning{background:var(--warning-bg,#FFFBEB);border-color:var(--warning-border,#FDE68A);color:#92400E}" +
+    ".obd-badge.is-success{background:var(--success-bg,#F0FDF4);border-color:var(--success-border,#BBF7D0);color:#166534}" +
+    ".obd-badge.is-info{background:var(--info-bg,#ECFEFF);border-color:var(--info-border,#A5F3FC);color:#155E75}" +
+    ".obd-sec{border:1px solid var(--border,#E2E8F0);border-radius:10px;background:var(--surface,#fff)}" +
+    ".obd-sec>h3{display:flex;align-items:center;gap:8px;margin:0;padding:8px 10px;font-size:13px}" +
+    ".obd-disc{flex:1;display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:4px 2px;cursor:pointer;font:inherit;font-weight:600;color:var(--text,#0F172A);text-align:left}" +
+    ".obd-disc:hover{color:var(--primary,#2563EB)}" +
+    ".obd-count{font-family:var(--mono);font-size:11px;color:var(--text-muted,#64748B)}" +
+    ".obd-body{padding:4px 12px 12px;border-top:1px solid var(--border-soft,#F1F5F9)}" +
+    ".obd-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 16px;margin:8px 0 0}" +
+    ".obd-kv dt{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted,#64748B)}" +
+    ".obd-kv dd{margin:1px 0 0;font-size:13px;word-break:break-word}" +
+    ".obd-compare{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}" +
+    ".obd-compare th,.obd-compare td{padding:6px 8px;border-bottom:1px solid var(--border-soft,#F1F5F9);text-align:left;vertical-align:top}" +
+    ".obd-compare thead th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted,#64748B);background:var(--surface-muted,#F8FAFC)}" +
+    ".obd-compare tbody th{font-weight:600;color:var(--text-secondary,#475569)}" +
+    ".obd-compare .num{text-align:right;font-family:var(--mono)}" +
+    ".obd-adj{font-size:10.5px;color:var(--info,#0E7490)}" +
+    ".obd-ok{color:var(--success,#15803D)}.obd-bad{color:var(--danger,#B91C1C);font-weight:600}" +
+    ".obd-muted{color:var(--text-muted,#64748B)}" +
+    ".obd-explain{margin:8px 0 0;font-size:13px;line-height:1.5}" +
+    ".obd-alert{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;border-radius:8px;border:1px solid var(--warning-border,#FDE68A);background:var(--warning-bg,#FFFBEB);color:#92400E;font-size:12.5px;margin:8px 0}" +
+    ".obd-alert.is-info{border-color:var(--info-border,#A5F3FC);background:var(--info-bg,#ECFEFF);color:#155E75}" +
+    ".obd-case-list{list-style:none;margin:8px 0 10px;padding:0;display:flex;flex-direction:column;gap:8px}" +
+    ".obd-case{border:1px solid var(--border,#E2E8F0);border-radius:8px;padding:9px 11px;display:flex;flex-direction:column;gap:5px}" +
+    ".obd-case.is-active{border-color:var(--primary,#2563EB);box-shadow:0 0 0 3px var(--primary-soft,#DBEAFE)}" +
+    ".obd-case-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap}" +
+    ".obd-remark{margin:0;font-size:13px;white-space:pre-line}" +
+    ".obd-action{margin:0;font-size:12px;color:#166534}" +
+    ".obd-info{margin:0;font-size:12px;color:var(--text-secondary,#475569)}" +
+    ".obd-case-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px;color:var(--text-muted,#64748B)}" +
+    ".obd-last{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block}" +
+    ".obd-editor-wrap{border-top:1px dashed var(--border-strong,#CBD5E1);padding-top:10px;margin-top:6px}" +
+    ".obd-editor-wrap h4{margin:0 0 8px;font-size:13px}" +
+    ".obd-editor{display:flex;flex-direction:column;gap:12px}" +
+    ".obd-field{display:flex;flex-direction:column;gap:5px;min-width:0}" +
+    ".obd-label{font-size:11.5px;font-weight:600;color:var(--text-secondary,#475569)}" +
+    ".obd-hint{font-size:11px;color:var(--text-muted,#64748B)}" +
+    ".obd-input{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border-strong,#CBD5E1);border-radius:8px;font:inherit;font-size:13px;background:var(--surface,#fff)}" +
+    "textarea.obd-input{resize:vertical;line-height:1.45}" +
+    ".obd-input:focus{outline:2px solid var(--primary,#2563EB);outline-offset:0;border-color:var(--primary,#2563EB)}" +
+    ".obd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}" +
+    ".obd-readonly{padding:8px 11px;border:1px solid var(--border,#E2E8F0);border-radius:8px;background:var(--surface-muted,#F8FAFC);font-size:13px}" +
+    ".obd-flow{display:flex;align-items:center;gap:4px;flex-wrap:wrap}" +
+    ".obd-flow-sep{color:var(--text-muted,#94A3B8)}" +
+    ".obd-flow-step{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:999px;border:1px solid var(--border-strong,#CBD5E1);background:var(--surface,#fff);font:inherit;font-size:13px;font-weight:600;color:var(--text-secondary,#475569);cursor:pointer}" +
+    ".obd-flow-step[aria-checked=true].is-danger{background:var(--danger-bg,#FEF2F2);border-color:var(--danger,#DC2626);color:#991B1B}" +
+    ".obd-flow-step[aria-checked=true].is-warning{background:var(--warning-bg,#FFFBEB);border-color:var(--warning,#D97706);color:#92400E}" +
+    ".obd-flow-step[aria-checked=true].is-success{background:var(--success-bg,#F0FDF4);border-color:var(--success,#16A34A);color:#166534}" +
+    ".obd-fieldset{border:1px solid var(--border,#E2E8F0);border-radius:8px;padding:10px 12px;margin:0;display:flex;flex-direction:column;gap:8px}" +
+    ".obd-fieldset legend{font-size:11.5px;font-weight:600;color:var(--text-secondary,#475569);padding:0 4px}" +
+    ".obd-fieldset .obd-hint{margin:0}" +
+    ".obd-check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px}" +
+    ".obd-preview{font-size:13px;background:var(--surface-muted,#F8FAFC);border-radius:6px;padding:6px 10px}" +
+    ".obd-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.obd-spacer{flex:1}" +
+    ".obd-meta{margin:0;font-size:10.5px;color:var(--text-muted,#64748B);font-family:var(--mono)}" +
+    "#obcTimeline .daudit,#obcTimeline{font-size:12px}" +
+    "@media(max-width:560px){.obd-grid{grid-template-columns:1fr}}";
   document.head.appendChild(css);
-
   window.OBCase = {
     aktif:() => st.aktif, mulai, berhenti, terapkan, info, ringkasHitung, setelahHasil, evaluasiUlang,
     bukaLaci, tutupLaci, simpanLaci, sheetCases, sheetRiwayat, kunciHasil, unduhTemplate, unggah,
