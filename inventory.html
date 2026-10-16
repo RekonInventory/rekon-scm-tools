@@ -298,6 +298,23 @@ td.nowrap{white-space:nowrap}
 .warnline{border-radius:var(--gs-radius);border:1px solid var(--warning-border);color:#B45309;padding:8px 11px}
 .mfield label{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.01em;text-transform:none;color:var(--text-muted)}
 
+/* satu kolom upload untuk semua file: penanda jenis file & kartu */
+.drop-all{padding:26px;text-align:center}
+.drop-all .drop-title{font-size:16px;margin-bottom:5px}
+.drop-all .drop-desc{max-width:760px;margin:0 auto}
+.rolebar{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 2px}
+.rchip{display:inline-flex;gap:5px;align-items:baseline;border:1px solid var(--border);border-radius:999px;padding:3px 11px;font-size:12px;background:var(--surface)}
+.rchip.ok{border-color:var(--success-border,#BBF7D0);background:var(--success-bg,#F0FDF4)}
+.rchip.need{border-color:var(--warning-border);background:var(--warning-bg,#FFFBEB);color:#B45309}
+.rchip.opt{color:var(--text-muted)}
+.rchip.warn{border-color:var(--danger-border,#FECACA);background:var(--danger-bg,#FEF2F2);color:#B91C1C}
+.fcard.unk{border-left-color:var(--warning,#D97706)}
+.mfield.role{grid-column:span 2;min-width:230px}
+.mfield.role select{font-weight:600}
+.fcard .also{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--border)}
+.fcard .also label{font-size:11.5px;font-weight:600;color:var(--text-muted);white-space:nowrap}
+.fcard .also select{max-width:260px}
+
 /* --- Form --- */
 select,input[type=text],input[type=number]{
   font-size:13px;padding:9px 11px;border:1px solid var(--border-strong);
@@ -444,44 +461,15 @@ tbody tr:hover{background:var(--surface-muted)}
       <span class="step-title">Masukkan file</span>
       <span class="step-hint">Format .xlsx / .xls / .csv</span>
     </div>
-    <div class="grid2">
-      <div>
-        <div class="drop" id="dropInv">
-          <div class="drop-label">Sisi A · Gudang</div>
-          <div class="drop-title">File Inventory</div>
-          <div class="drop-desc">Klik atau tarik file ke sini. Boleh lebih dari satu (mis. Adidas dan Nike).</div>
-          <input type="file" id="fileInv" multiple accept=".xlsx,.xls,.csv">
-        </div>
-        <div id="listInv"></div>
-      </div>
-      <div>
-        <div class="drop" id="dropScm">
-          <div class="drop-label">Sisi B · Pembanding</div>
-          <div class="drop-title">File SCM</div>
-          <div class="drop-desc">Klik atau tarik file laporan SCM ke sini.</div>
-          <input type="file" id="fileScm" multiple accept=".xlsx,.xls,.csv">
-        </div>
-        <div id="listScm"></div>
-      </div>
-      <div>
-        <div class="drop" id="dropInb">
-          <div class="drop-label">Sisi C · Opsional</div>
-          <div class="drop-title">Laporan Inbound SCM</div>
-          <div class="drop-desc">Sumber tanggal GRN. Dicocokkan lewat nomor job dari file SCM.</div>
-          <input type="file" id="fileInb" multiple accept=".xlsx,.xls,.csv">
-        </div>
-        <div id="listInb"></div>
-      </div>
-      <div>
-        <div class="drop" id="dropOut">
-          <div class="drop-label">Sisi D · Opsional</div>
-          <div class="drop-title">Laporan Outbound SCM</div>
-          <div class="drop-desc">Sumber tanggal keluar (GI Date). Dicocokkan lewat nomor PEB.</div>
-          <input type="file" id="fileOut" multiple accept=".xlsx,.xls,.csv">
-        </div>
-        <div id="listOut"></div>
-      </div>
+    <div class="drop drop-all" id="dropAll">
+      <div class="drop-label">Satu kolom untuk semua file</div>
+      <div class="drop-title">Tarik &amp; lepas semua file di sini, atau klik untuk memilih</div>
+      <div class="drop-desc">Masukkan sekaligus: <b>Inventory</b> (boleh Adidas dan Nike), <b>laporan SCM</b>, dan bila ada <b>Inbound SCM</b> (tanggal GRN)
+        serta <b>Outbound SCM</b> (tanggal keluar). Jenis tiap file dikenali otomatis dari nama kolomnya dan bisa diubah di kartu file.</div>
+      <input type="file" id="fileAll" multiple accept=".xlsx,.xls,.csv">
     </div>
+    <div class="rolebar" id="roleBar"></div>
+    <div id="listAll"></div>
   </div>
 
   <!-- STEP 2 -->
@@ -837,7 +825,7 @@ function categorize(so){
 }
 
 /* ================= State ================= */
-const state = { inv:[], scm:[], inb:[], out:[], rows:[], filter:new Set(), shown:0, refDate:'',
+const state = { inv:[], scm:[], inb:[], out:[], unk:[], rows:[], filter:new Set(), shown:0, refDate:'',
   listing:[], lshown:0, notes:new Map(),
   sortKey:null, sortDir:'asc',
   colFilters:{ peb:'', category:'', aju:'', job:'', grn:'', gout:'', arr:'', shipInv:'', shipScm:'',
@@ -1143,61 +1131,138 @@ function bestSheet(wbk){
 }
 
 /* ================= Kartu file ================= */
+/* Semua file masuk lewat satu kolom upload. Tiap file diberi "jenis" (peran) secara otomatis dari nama
+   kolomnya: inv = Inventory, scm = laporan SCM, inb = Inbound SCM (tanggal GRN), out = Outbound SCM
+   (tanggal keluar). Jenis bisa diubah di kartu file; file yang belum dikenali ditaruh di state.unk
+   sampai pengguna menentukan jenisnya. */
+const SIDES = ['inv','scm','inb','out'];
+const SIDE_TITLE = {inv:'Inventory (gudang)', scm:'Laporan SCM', inb:'Inbound SCM (tanggal GRN)', out:'Outbound SCM (tanggal keluar)'};
+const SIDE_NEED = {inv:true, scm:true, inb:false, out:false};   /* wajib / opsional */
+
+/* Kenali jenis file dari hasil analisis kolom sheet terpilih (a), nama file dan nama sheet.
+   Mengembalikan 'inv' | 'scm' | 'inb' | 'out' atau null bila tidak yakin. */
+function detectSide(a, fileName, sheetNames){
+  const hasPeb = a.peb>=0, hasQty = a.qty>=0, hasShip = a.ship>=0;
+  const hasExBc = pickCol(a.headers, EXBC_HINTS) >= 0;
+  /* 1. laporan outbound: punya tanggal keluar (GI Date / Tgl Keluar) atau kolom EX BC33 */
+  if(hasPeb && (a.out>=0 || hasExBc)) return 'out';
+  /* 2. laporan SCM: nomor job + nomor AJU di samping PEB */
+  if(hasPeb && a.job>=0 && a.aju>=0) return 'scm';
+  /* 3. laporan inbound: nomor job + tanggal GRN tanpa AJU */
+  if(a.job>=0 && a.arr>=0) return 'inb';
+  /* 4. inventory gudang: PEB + qty tanpa job/AJU */
+  if(hasPeb && hasQty && (hasShip || a.arr>=0)) return 'inv';
+  /* 5. cadangan: petunjuk dari nama file / nama sheet */
+  const nm = norm(fileName + ' ' + (sheetNames||[]).join(' '));
+  if(/outbound|outbond/.test(nm)) return 'out';
+  if(/inbound|\bgrn\b/.test(nm)) return 'inb';
+  if(/\bscm\b/.test(nm)) return hasPeb ? 'scm' : null;
+  if(/inventory|inventaris|\bstock\b|\bstok\b/.test(nm)) return hasPeb ? 'inv' : null;
+  return null;
+}
+
+/* Semua entri file, berurutan: belum dikenali, lalu per jenis */
+function allEntries(){
+  const list = state.unk.map(f=>({f, side:null}));
+  SIDES.forEach(s=> state[s].forEach(f=> list.push({f, side:s})));
+  return list;
+}
+function fileKey(file){ return file.name + '|' + file.size; }
+function removeEntry(f){
+  ['unk'].concat(SIDES).forEach(s=>{ const i = state[s].indexOf(f); if(i>=0) state[s].splice(i,1); });
+}
+/* Pindahkan file ke jenis lain: kolom dibaca ulang dari sheet yang sama dengan bawaan jenis baru */
+function moveToSide(f, side){
+  removeEntry(f);
+  Object.assign(f, analyseSheet(f.wb, f.sheet));
+  applySideDefaults(f, side);
+  f.dataRows = Math.max(0, f.aoa.length-f.hIdx-1);
+  state[side].push(f);
+}
+/* Pakai file yang sama juga untuk jenis lain (mis. satu laporan dipakai sebagai SCM dan sebagai sumber tanggal GRN) */
+function copyToSide(f, side){
+  const c = {name:f.name, key:f.key, wb:f.wb, sheet:f.sheet, candidates:f.candidates};
+  Object.assign(c, analyseSheet(c.wb, c.sheet));
+  applySideDefaults(c, side);
+  c.dataRows = Math.max(0, c.aoa.length-c.hIdx-1);
+  state[side].push(c);
+}
+
+function renderRoleBar(){
+  const bar = document.getElementById('roleBar');
+  if(!bar) return;
+  const n = SIDES.reduce((o,s)=>{ o[s]=state[s].length; return o; }, {});
+  bar.innerHTML = SIDES.map(s=>{
+    const cls = n[s] ? 'ok' : (SIDE_NEED[s] ? 'need' : 'opt');
+    const tag = n[s] ? n[s]+' file' : (SIDE_NEED[s] ? 'wajib' : 'opsional');
+    return `<span class="rchip ${cls}"><b>${escAttr(SIDE_TITLE[s])}</b> · ${tag}</span>`;
+  }).join('') + (state.unk.length ? `<span class="rchip warn"><b>${state.unk.length} file belum dikenali</b> · pilih jenisnya di kartu</span>` : '');
+}
+
 function renderCards(){
-  ['inv','scm','inb','out'].forEach(side=>{
-    const box = document.getElementById(
-      side==='inv'?'listInv' : side==='scm'?'listScm' : side==='inb'?'listInb' : 'listOut');
-    box.innerHTML = '';
-    state[side].forEach((f,i)=>{
-      const d = document.createElement('div');
-      d.className='fcard';
-      const opts = f.wb.SheetNames.map(n=>`<option value="${escAttr(n)}" ${n===f.sheet?'selected':''}>${escAttr(n)}</option>`).join('');
-      const colOpts = sel => f.headers.map((h,ci)=>`<option value="${ci}" ${ci===sel?'selected':''}>${escAttr(h)}</option>`).join('');
-      const others = (f.candidates||[]).filter(n=>n!==f.sheet);
-      const warn = others.length
-        ? `<div class="warnline">Sheet lain di file ini juga punya kolom PEB: <b>${others.map(escAttr).join(', ')}</b>. Pastikan pilihan di bawah sudah benar.</div>`
-        : '';
-      const fld = (k,label,optional) =>
-        `<div class="mfield"><label>${label}</label><select data-k="${k}">${
-          optional?`<option value="-1" ${f[k]<0?'selected':''}>— tidak ada —</option>`:''
-        }${colOpts(f[k])}</select></div>`;
-      const maps = (side==='inb'
-        ? fld('job','Kolom Job',false) + fld('arr','Kolom Tgl GRN',false) + fld('peb','Kolom PEB',true)
-        : side==='out'
-        ? fld('peb','Kolom PEB (EX BC33)',false) + fld('out','Kolom Tgl Keluar',false) + fld('job','Kolom Job',true)
-        : fld('peb','Kolom PEB',false) + fld('qty','Kolom Qty',false) + fld('ship','Kolom Shipper',true) +
-          (side==='scm' ? fld('aju','Kolom AJU',true) + fld('job','Kolom Job',true)
-                        : fld('arr','Kolom Tgl Datang',true))
-      ) + fld('so','Kolom SO',true) + fld('po','Kolom PO',true);
-      d.innerHTML = `
-        <div class="fcard-top">
-          <div>
-            <div class="fname">${escAttr(f.name)}</div>
-            <div class="fmeta">${f.dataRows.toLocaleString('id-ID')} baris data · header di baris ${f.hIdx+1}</div>
-          </div>
-          <button class="x" title="Hapus">&times;</button>
+  const box = document.getElementById('listAll');
+  box.innerHTML = '';
+  allEntries().forEach(({f, side})=>{
+    const d = document.createElement('div');
+    d.className = 'fcard' + (side ? '' : ' unk');
+    const opts = f.wb.SheetNames.map(n=>`<option value="${escAttr(n)}" ${n===f.sheet?'selected':''}>${escAttr(n)}</option>`).join('');
+    const colOpts = sel => f.headers.map((h,ci)=>`<option value="${ci}" ${ci===sel?'selected':''}>${escAttr(h)}</option>`).join('');
+    const others = (f.candidates||[]).filter(n=>n!==f.sheet);
+    const warn = others.length
+      ? `<div class="warnline">Sheet lain di file ini juga punya kolom PEB: <b>${others.map(escAttr).join(', ')}</b>. Pastikan pilihan di bawah sudah benar.</div>`
+      : '';
+    const fld = (k,label,optional) =>
+      `<div class="mfield"><label>${label}</label><select data-k="${k}">${
+        optional?`<option value="-1" ${f[k]<0?'selected':''}>— tidak ada —</option>`:''
+      }${colOpts(f[k])}</select></div>`;
+    const maps = !side ? '' : (side==='inb'
+      ? fld('job','Kolom Job',false) + fld('arr','Kolom Tgl GRN',false) + fld('peb','Kolom PEB',true)
+      : side==='out'
+      ? fld('peb','Kolom PEB (EX BC33)',false) + fld('out','Kolom Tgl Keluar',false) + fld('job','Kolom Job',true)
+      : fld('peb','Kolom PEB',false) + fld('qty','Kolom Qty',false) + fld('ship','Kolom Shipper',true) +
+        (side==='scm' ? fld('aju','Kolom AJU',true) + fld('job','Kolom Job',true)
+                      : fld('arr','Kolom Tgl Datang',true))
+    ) + (side ? fld('so','Kolom SO',true) + fld('po','Kolom PO',true) : '');
+    const roleOpts = (side ? '' : '<option value="" selected>— pilih jenis file —</option>') +
+      SIDES.map(s=>`<option value="${s}" ${s===side?'selected':''}>${escAttr(SIDE_TITLE[s])}</option>`).join('');
+    const alsoOpts = SIDES.filter(s=> s!==side && !state[s].some(x=>x.key===f.key))
+      .map(s=>`<option value="${s}">${escAttr(SIDE_TITLE[s])}</option>`).join('');
+    d.innerHTML = `
+      <div class="fcard-top">
+        <div>
+          <div class="fname">${escAttr(f.name)}</div>
+          <div class="fmeta">${f.dataRows.toLocaleString('id-ID')} baris data · header di baris ${f.hIdx+1}</div>
         </div>
-        ${warn}
-        <div class="maps">
-          <div class="mfield"><label>Sheet</label><select data-k="sheet">${opts}</select></div>
-          ${maps}
-        </div>`;
-      d.querySelector('.x').onclick = ()=>{ state[side].splice(i,1); renderCards(); updateRun(); };
-      d.querySelectorAll('select').forEach(sel=>{
-        sel.onchange = ()=>{
-          const k = sel.dataset.k;
-          if(k==='sheet'){
-            f.sheet = sel.value;
-            Object.assign(f, analyseSheet(f.wb,f.sheet));
-            applySideDefaults(f, side);
-            f.dataRows = Math.max(0,f.aoa.length-f.hIdx-1);
-            renderCards();
-          } else { f[k] = parseInt(sel.value,10); }
-        };
-      });
-      box.appendChild(d);
+        <button class="x" title="Hapus">&times;</button>
+      </div>
+      ${side ? '' : '<div class="warnline">Jenis file ini belum bisa dikenali dari nama kolomnya. Pilih jenisnya dulu supaya bisa dipakai.</div>'}
+      ${warn}
+      <div class="maps">
+        <div class="mfield role"><label>Jenis file</label><select data-k="role">${roleOpts}</select></div>
+        <div class="mfield"><label>Sheet</label><select data-k="sheet">${opts}</select></div>
+        ${maps}
+      </div>
+      ${side && alsoOpts ? `<div class="also"><label>Pakai juga sebagai</label><select data-k="also"><option value="">—</option>${alsoOpts}</select></div>` : ''}`;
+    d.querySelector('.x').onclick = ()=>{ removeEntry(f); renderCards(); updateRun(); };
+    d.querySelectorAll('select').forEach(sel=>{
+      sel.onchange = ()=>{
+        const k = sel.dataset.k;
+        if(k==='role'){
+          if(sel.value){ moveToSide(f, sel.value); renderCards(); updateRun(); }
+        } else if(k==='also'){
+          if(sel.value){ copyToSide(f, sel.value); renderCards(); updateRun(); }
+        } else if(k==='sheet'){
+          f.sheet = sel.value;
+          Object.assign(f, analyseSheet(f.wb,f.sheet));
+          if(side) applySideDefaults(f, side);
+          f.dataRows = Math.max(0,f.aoa.length-f.hIdx-1);
+          renderCards();
+        } else { f[k] = parseInt(sel.value,10); }
+      };
     });
+    box.appendChild(d);
   });
+  renderRoleBar();
 }
 
 /* Tiap sisi hanya memakai kolom yang relevan baginya */
@@ -1214,51 +1279,60 @@ function applySideDefaults(a, side){
   }
 }
 
-async function addFiles(side, fileList){
+/* Satu pintu masuk untuk semua file. Jenis tiap file dikenali dari nama kolomnya (detectSide). */
+async function addFiles(fileList){
   const msg = document.getElementById('statusMsg');
-  for(const file of fileList){
+  const dupes = [];
+  for(const file of Array.from(fileList)){
+    const key = fileKey(file);
+    if(allEntries().some(e=>e.f.key===key)){ dupes.push(file.name); continue; }
     try{
       msg.className='status-msg'; msg.textContent = 'Membaca '+file.name+'…';
       const wb = await readFile(file);
       const {sheet, candidates} = bestSheet(wb);
       const a = analyseSheet(wb,sheet);
-      applySideDefaults(a, side);
-      state[side].push({name:file.name, wb, sheet, candidates, ...a,
-        dataRows: Math.max(0,a.aoa.length-a.hIdx-1)});
+      const side = detectSide(a, file.name, wb.SheetNames);
+      /* laporan SCM yang punya kolom GRN sekaligus sumber tanggal GRN: dipakai juga sebagai Inbound SCM
+         (kartunya tampil terpisah dan bisa dihapus bila tidak diinginkan) */
+      const alsoInb = side==='scm' && a.arr>=0 && /grn/.test(norm(a.headers[a.arr]));
+      if(side) applySideDefaults(a, side);
+      const entry = {name:file.name, key, wb, sheet, candidates, ...a,
+        dataRows: Math.max(0,a.aoa.length-a.hIdx-1)};
+      (side ? state[side] : state.unk).push(entry);
+      if(alsoInb) copyToSide(entry, 'inb');
     }catch(err){
       msg.className='status-msg bad';
       msg.textContent = 'Tidak bisa membaca '+file.name+'. Pastikan file .xlsx, .xls, atau .csv yang tidak terkunci.';
     }
   }
+  if(dupes.length) gltToast('Sudah ada, dilewati: ' + dupes.join(', '), 'warn');
   renderCards(); updateRun();
 }
 
 function updateRun(){
-  const ok = state.inv.length>0 && state.scm.length>0;
+  const ok = state.inv.length>0 && state.scm.length>0 && state.unk.length===0;
   document.getElementById('btnRun').disabled = !ok;
   const msg = document.getElementById('statusMsg');
   if(msg.classList.contains('bad')) return;
-  if(ok) msg.textContent = `Siap: ${state.inv.length} file inventory, ${state.scm.length} file SCM.`;
+  const extra = (state.inb.length ? `, ${state.inb.length} Inbound SCM` : '') + (state.out.length ? `, ${state.out.length} Outbound SCM` : '');
+  if(state.unk.length) msg.textContent = `Pilih jenis file untuk ${state.unk.length} file yang belum dikenali.`;
+  else if(ok) msg.textContent = `Siap: ${state.inv.length} file inventory, ${state.scm.length} file SCM${extra}.`;
   else if(state.inv.length && !state.scm.length) msg.textContent = 'Tambahkan file SCM.';
   else if(!state.inv.length && state.scm.length) msg.textContent = 'Tambahkan file inventory.';
   else msg.textContent = 'Belum ada file.';
 }
 
-/* ================= Dropzone ================= */
-function wireDrop(zoneId, inputId, side){
-  const zone = document.getElementById(zoneId), input = document.getElementById(inputId);
+/* ================= Dropzone (satu kolom untuk semua file) ================= */
+(function wireDrop(){
+  const zone = document.getElementById('dropAll'), input = document.getElementById('fileAll');
   zone.onclick = ()=>input.click();
-  input.onchange = ()=>{ addFiles(side, input.files); input.value=''; };
+  input.onchange = ()=>{ addFiles(input.files); input.value=''; };
   ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev,e=>{
     e.preventDefault(); zone.classList.add('hot');}));
   ['dragleave','drop'].forEach(ev=>zone.addEventListener(ev,e=>{
     e.preventDefault(); zone.classList.remove('hot');}));
-  zone.addEventListener('drop', e=>{ if(e.dataTransfer.files.length) addFiles(side, e.dataTransfer.files); });
-}
-wireDrop('dropInv','fileInv','inv');
-wireDrop('dropScm','fileScm','scm');
-wireDrop('dropInb','fileInb','inb');
-wireDrop('dropOut','fileOut','out');
+  zone.addEventListener('drop', e=>{ if(e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+})();
 
 /* ================= Laporan inbound: GRN per nomor job ================= */
 function buildInbound(){
@@ -1837,7 +1911,7 @@ document.getElementById('btnClearFilters').onclick = ()=>{
 };
 
 document.getElementById('btnReset').onclick = ()=>{
-  state.inv=[]; state.scm=[]; state.inb=[]; state.out=[]; state.rows=[]; state.filter=new Set(); state.refDate='';
+  state.inv=[]; state.scm=[]; state.inb=[]; state.out=[]; state.unk=[]; state.rows=[]; state.filter=new Set(); state.refDate='';
   state.notes=new Map();
   currentRunId=null;
   state.listing=[]; state.lshown=0;
