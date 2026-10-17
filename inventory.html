@@ -309,6 +309,8 @@ td.nowrap{white-space:nowrap}
 .rchip.opt{color:var(--text-muted)}
 .rchip.warn{border-color:var(--danger-border,#FECACA);background:var(--danger-bg,#FEF2F2);color:#B91C1C}
 .fcard.unk{border-left-color:var(--warning,#D97706)}
+body.sesi-follower #dropAll{opacity:.45;pointer-events:none}   /* mengikuti sesi bersama: unggah dikunci */
+body:not(.inv-case-mode) .col-case{display:none}   /* kolom Case hanya tampil di mode case (SQL case sudah dijalankan) */
 .mfield.role{grid-column:span 2;min-width:230px}
 .mfield.role select{font-weight:600}
 .fcard .also{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--border)}
@@ -454,6 +456,9 @@ tbody tr:hover{background:var(--surface-muted)}
 
 <div class="wrap">
 
+  <!-- sesi bersama (glt-shared-session.js): tampil bila ada sesi aktif yang Anda pimpin / ikuti -->
+  <div id="sesiBar" hidden></div>
+
   <!-- STEP 1 -->
   <div class="step">
     <div class="step-head">
@@ -524,6 +529,7 @@ tbody tr:hover{background:var(--surface-muted)}
         <button class="btn btn-ghost btn-sm" id="btnNoteTpl" title="Template Excel berisi baris yang sedang tampil, untuk mengisi catatan per PEB secara massal">Template catatan</button>
         <button class="btn btn-ghost btn-sm" id="btnNoteUp" title="Unggah template catatan yang sudah diisi; tampil pratinjau dulu">Upload catatan</button>
         <input type="file" id="fileNotes" accept=".xlsx,.xlsm,.xls" hidden>
+        <span id="caseSummary"></span>
       </div>
       <div class="runhistpanel" id="runHistPanel">
         <h3>Run tersimpan</h3>
@@ -548,6 +554,7 @@ tbody tr:hover{background:var(--surface-muted)}
               <th data-key="diff">Selisih<i class="sarr"></i></th>
               <th data-key="src">Sumber<i class="sarr"></i></th>
               <th data-key="status">Status<i class="sarr"></i></th>
+              <th data-key="case" class="col-case">Case<i class="sarr"></i></th>
               <th data-key="notes">Catatan<i class="sarr"></i></th>
             </tr>
             <tr class="frow">
@@ -580,6 +587,17 @@ tbody tr:hover{background:var(--surface-muted)}
               <th>
                 <select class="cf-sel" data-key="status" id="cfStatus">
                   <option value="">Semua</option>
+                </select>
+              </th>
+              <th class="col-case">
+                <select class="cf-sel" data-key="case">
+                  <option value="">Semua</option>
+                  <option value="none">Tanpa case</option>
+                  <option value="any">Ada case</option>
+                  <option value="active">Aktif (Open / In Progress)</option>
+                  <option value="OPEN">Open</option>
+                  <option value="IN PROGRESS">In Progress</option>
+                  <option value="closed">Closed semua</option>
                 </select>
               </th>
               <th><input type="text" class="cf" data-key="notes" placeholder="Filter…"></th>
@@ -829,7 +847,7 @@ const state = { inv:[], scm:[], inb:[], out:[], unk:[], rows:[], filter:new Set(
   listing:[], lshown:0, notes:new Map(),
   sortKey:null, sortDir:'asc',
   colFilters:{ peb:'', category:'', aju:'', job:'', grn:'', gout:'', arr:'', shipInv:'', shipScm:'',
-    qtyInvMin:'', qtyInvMax:'', qtyScmMin:'', qtyScmMax:'', diffMin:'', diffMax:'', src:'', status:'', notes:'' } };
+    qtyInvMin:'', qtyInvMax:'', qtyScmMin:'', qtyScmMax:'', diffMin:'', diffMax:'', src:'', status:'', case:'', notes:'' } };
 const STATUS = {
   MATCH:            {label:'Cocok',                color:'#1B7F4B', cls:'t-ok'},
   SELISIH:          {label:'Selisih qty',          color:'#B45309', cls:'t-warn'},
@@ -954,6 +972,7 @@ async function openRun(id){
       ? new Date(r.updated_at).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'}) : '—';
     document.getElementById('runRows').textContent = state.rows.length.toLocaleString('id-ID');
     document.getElementById('resultStep').classList.remove('hide');
+    if(window.INVCase && INVCase.aktif()) INVCase.terapkan();   /* mode case: catatan selalu dari case, bukan dari salinan di run */
     renderLedger(); renderTable(true); renderListing(true);
     document.getElementById('runHistPanel').classList.remove('on');
     document.getElementById('resultStep').scrollIntoView({behavior:'smooth',block:'start'});
@@ -980,6 +999,8 @@ async function deleteRun(id){
 function refreshAuthUI(session){
   const user = session && session.user ? session.user : null;
   currentUser = user;
+  if(window.INVCase){ if(user) INVCase.mulai(user); else INVCase.berhenti(); }   /* case Inventory: mulai/berhenti bersama login */
+  if(window.SESI_INV){ if(user) SESI_INV.mulai(user); else SESI_INV.berhenti(); }   /* sesi bersama */
   const emailEl = document.getElementById('acctEmail');
   if(user){
     document.body.classList.add('authed');
@@ -1279,8 +1300,12 @@ function applySideDefaults(a, side){
   }
 }
 
+/* Sedang mengikuti sesi bersama orang lain? (unggah & jalankan pengecekan dikunci) */
+const ikutSesi = ()=> !!(window.SESI_INV && SESI_INV.mengikuti());
+
 /* Satu pintu masuk untuk semua file. Jenis tiap file dikenali dari nama kolomnya (detectSide). */
 async function addFiles(fileList){
+  if(ikutSesi()){ gltToast('Anda sedang mengikuti sesi bersama. Berhenti mengikuti dulu untuk mengunggah berkas sendiri.', 'warn'); return; }
   const msg = document.getElementById('statusMsg');
   const dupes = [];
   for(const file of Array.from(fileList)){
@@ -1311,8 +1336,9 @@ async function addFiles(fileList){
 
 function updateRun(){
   const ok = state.inv.length>0 && state.scm.length>0 && state.unk.length===0;
-  document.getElementById('btnRun').disabled = !ok;
+  document.getElementById('btnRun').disabled = !ok || ikutSesi();
   const msg = document.getElementById('statusMsg');
+  if(ikutSesi()){ msg.className='status-msg'; msg.textContent = 'Anda mengikuti sesi bersama — hasil mengikuti owner. Berhenti mengikuti untuk menjalankan pengecekan sendiri.'; return; }
   if(msg.classList.contains('bad')) return;
   const extra = (state.inb.length ? `, ${state.inb.length} Inbound SCM` : '') + (state.out.length ? `, ${state.out.length} Outbound SCM` : '');
   if(state.unk.length) msg.textContent = `Pilih jenis file untuk ${state.unk.length} file yang belum dikenali.`;
@@ -1456,6 +1482,7 @@ function buildListing(){
 }
 
 function run(){
+  if(ikutSesi()){ gltToast('Anda sedang mengikuti sesi bersama. Berhenti mengikuti dulu untuk menjalankan pengecekan sendiri.', 'warn'); return; }
   currentRunId = null;
   const A = aggregate(state.inv);
   const B = aggregate(state.scm);
@@ -1536,8 +1563,78 @@ function run(){
   document.getElementById('runRows').textContent =
     (A.read+B.read+IN.read+OUT.read).toLocaleString('id-ID');
   document.getElementById('resultStep').classList.remove('hide');
+  /* mode case: catatan & kolom Case diturunkan dari case server (melekat pada PEB, berlaku di setiap pengecekan) */
+  if(window.INVCase && INVCase.aktif()) INVCase.terapkan();
   renderLedger(); renderTable(true); renderListing(true);
   document.getElementById('resultStep').scrollIntoView({behavior:'smooth',block:'start'});
+  /* sesi bersama: hasil ini dibagikan ke rekan (Anda menjadi owner sesi) */
+  if(window.SESI_INV) SESI_INV.publikasi();
+}
+
+/* ================= Sesi bersama: hasil & tampilan untuk follower ================= */
+function hasilBersama(){
+  if(!state.rows.length) return null;
+  const nama = side => state[side].map(f=>f.name).join(', ');
+  const src = {inventory:nama('inv'), scm:nama('scm'), inbound:nama('inb'), outbound:nama('out')};
+  Object.keys(src).forEach(k=>{ if(!src[k]) delete src[k]; });
+  return {
+    data:{v:1, rows:state.rows, listing:state.listing, refDate:state.refDate,
+      runDate:document.getElementById('runDate').textContent, runRows:document.getElementById('runRows').textContent},
+    periodKey: state.refDate ? 'acuan ' + state.refDate : null,
+    sourceNames: Object.keys(src).length ? src : null
+  };
+}
+function terapkanHasilBersama(d){
+  state.rows = d.rows || []; state.listing = d.listing || []; state.refDate = d.refDate || '';
+  state.filter = new Set(); state.shown = 0; state.lshown = 0; currentRunId = null;
+  const wrap = document.getElementById('refWrap'), picker = document.getElementById('refDate');
+  if(state.refDate){
+    wrap.classList.remove('hide');
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(state.refDate);
+    picker.value = m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+  }else{ wrap.classList.add('hide'); picker.value=''; }
+  document.getElementById('runDate').textContent = d.runDate || '—';
+  document.getElementById('runRows').textContent = d.runRows || '0';
+  document.getElementById('resultStep').classList.remove('hide');
+  if(window.INVCase && INVCase.aktif()) INVCase.terapkan();
+  renderLedger(); renderTable(true); renderListing(true);
+}
+function tampilanSaya(){
+  const L = window.INVCase && INVCase.aktif() ? INVCase._st.laci : null;
+  return {tab: document.getElementById('panelList').classList.contains('hide') ? 'recon' : 'list',
+    q: document.getElementById('search').value, cf: Object.assign({}, state.colFilters),
+    sortKey: state.sortKey, sortDir: state.sortDir, legend: Array.from(state.filter),
+    lq: document.getElementById('lsearch').value, lsrc: document.getElementById('lsrcFilter').value,
+    lcat: document.getElementById('lcatFilter').value, laci: L ? L.key : null};
+}
+function terapkanTampilanBersama(v){
+  document.getElementById('search').value = v.q || '';
+  Object.keys(state.colFilters).forEach(k=>{ state.colFilters[k] = (v.cf && v.cf[k]) || ''; });
+  document.querySelectorAll('.cf, .cf-num, .cf-sel').forEach(el=>{ el.value = state.colFilters[el.dataset.key] || ''; });
+  state.sortKey = v.sortKey || null; state.sortDir = v.sortDir || 'asc';
+  document.querySelectorAll('#hrow th').forEach(h=>{
+    h.classList.toggle('sorted', h.dataset.key===state.sortKey);
+    const arr = h.querySelector('.sarr');
+    if(arr) arr.textContent = h.dataset.key===state.sortKey ? (state.sortDir==='asc'?'▲':'▼') : '';
+  });
+  state.filter = new Set(v.legend || []);
+  document.getElementById('lsearch').value = v.lq || '';
+  document.getElementById('lsrcFilter').value = v.lsrc || '';
+  document.getElementById('lcatFilter').value = v.lcat || '';
+  switchTab(v.tab === 'list' ? 'list' : 'recon');
+  if(state.rows.length){ renderLedger(); renderTable(true); renderListing(true); }
+  /* laci rincian ikut owner, kecuali Anda sedang mengetik di laci sendiri */
+  if(window.INVCase && INVCase.aktif()){
+    const L = INVCase._st.laci, sibuk = L && (L.edit || L.dirty);
+    if(v.laci && (!L || L.key !== v.laci) && !sibuk) INVCase.bukaLaci(v.laci);
+    else if(!v.laci && L && !sibuk) INVCase.tutupLaci();
+  }
+}
+function kunciFollower(f){
+  document.body.classList.toggle('sesi-follower', f);
+  document.getElementById('btnReset').disabled = f;
+  document.getElementById('refDate').disabled = f;
+  updateRun();
 }
 
 /* ================= Ledger strip ================= */
@@ -1584,6 +1681,7 @@ function sortValue(r, key){
     case 'qtyInv': case 'qtyScm': case 'diff': return r[key];
     case 'status': return STATUS[r.status] ? STATUS[r.status].label : r.status;
     case 'notes': return state.notes.get(r.peb) || '';
+    case 'case': return window.INVCase && INVCase.aktif() ? INVCase.urutan(r.peb) : null;
     case 'grn': case 'gout': case 'arr': {
       const first = (r[key]||'').split(' / ')[0].trim();
       const d = parseDMY(first);
@@ -1634,6 +1732,7 @@ function visibleRows(){
     if(!numOk(r.diff, cf.diffMin, cf.diffMax)) return false;
     if(!textOk(r.src, cf.src)) return false;
     if(cf.status && r.status!==cf.status) return false;
+    if(cf.case && window.INVCase && INVCase.aktif() && !INVCase.lolosFilter(r.peb, cf.case)) return false;
     if(!textOk(state.notes.get(r.peb), cf.notes)) return false;
     return true;
   });
@@ -1648,12 +1747,23 @@ function renderTable(reset){
   if(reset) tb.innerHTML='';
 
   if(!rows.length){
-    tb.innerHTML = `<tr><td colspan="15"><div class="empty"><b>Tidak ada baris yang cocok</b>Ubah kata kunci pencarian atau aktifkan kembali status yang disaring.</div></td></tr>`;
+    tb.innerHTML = `<tr><td colspan="16"><div class="empty"><b>Tidak ada baris yang cocok</b>Ubah kata kunci pencarian atau aktifkan kembali status yang disaring.</div></td></tr>`;
   }else{
     const frag = document.createDocumentFragment();
+    const caseMode = !!(window.INVCase && INVCase.aktif());
     for(let i=state.shown;i<next;i++){
       const r = rows[i], s = STATUS[r.status];
       const tr = document.createElement('tr');
+      tr.dataset.peb = r.peb;
+      const ci = caseMode ? INVCase.info(r.peb) : null;
+      const caseCell = `<td class="col-case casecell">${ci
+        ? `<span class="tag ${ci.kelas}">${escAttr(ci.teks)}</span>${ci.sub ? `<span class="cc-sub">${escAttr(ci.sub)}</span>` : ''}`
+        : '<span class="muted">—</span>'}</td>`;
+      /* mode case: catatan hanya turunan dari case (diedit lewat laci rincian); mode lama: kotak isian per PEB */
+      const noteCell = caseMode
+        ? `<td class="notecell">${state.notes.get(r.peb) ? escAttr(state.notes.get(r.peb)) : '<span class="muted">—</span>'}</td>`
+        : `<td><input type="text" class="noteinput" data-peb="${escAttr(r.peb)}"
+              value="${escAttr(state.notes.get(r.peb)||'')}" placeholder="Tambah catatan…"></td>`;
       tr.innerHTML = `
         <td class="mono">${escAttr(r.peb)}</td>
         <td>${r.category ? `<span class="tag ${r.category==='Nike'?'t-cat-nike':'t-cat-adidas'}">${escAttr(r.category)}</span>` : '<span class="muted">—</span>'}</td>
@@ -1669,8 +1779,8 @@ function renderTable(reset){
         <td class="num">${r.diff==null?'<span class="muted">—</span>':(r.diff===0?'0':fmt(r.diff))}</td>
         <td class="muted" style="font-size:11.5px">${escAttr(r.src)}</td>
         <td><span class="tag ${s.cls}">${s.label}</span></td>
-        <td><input type="text" class="noteinput" data-peb="${escAttr(r.peb)}"
-              value="${escAttr(state.notes.get(r.peb)||'')}" placeholder="Tambah catatan…"></td>`;
+        ${caseCell}
+        ${noteCell}`;
       frag.appendChild(tr);
     }
     tb.appendChild(frag);
@@ -1689,7 +1799,9 @@ function allRowsSorted(){
 const LABEL_FILTER_KOLOM = { peb:'PEB', category:'Kategori', aju:'No. AJU', job:'Job No.', grn:'Tgl GRN (SCM)',
   gout:'Tgl Keluar (SCM)', arr:'Tgl Datang (Gudang)', shipInv:'Shipper (Inventory)', shipScm:'Shipper (SCM)',
   qtyInvMin:'Qty Inventory min', qtyInvMax:'Qty Inventory maks', qtyScmMin:'Qty SCM min', qtyScmMax:'Qty SCM maks',
-  diffMin:'Selisih min', diffMax:'Selisih maks', src:'Sumber', status:'Status (kolom)', notes:'Catatan' };
+  diffMin:'Selisih min', diffMax:'Selisih maks', src:'Sumber', status:'Status (kolom)', case:'Case', notes:'Catatan' };
+const LABEL_FILTER_CASE = { none:'Tanpa case', any:'Ada case', active:'Aktif (Open / In Progress)', OPEN:'Open',
+  'IN PROGRESS':'In Progress', closed:'Closed semua' };
 function deskripsiFilter(){
   const d = [];
   const q = document.getElementById('search').value.trim();
@@ -1698,14 +1810,15 @@ function deskripsiFilter(){
   Object.keys(state.colFilters).forEach(k=>{
     const v = state.colFilters[k];
     if(v==='' || v==null) return;
-    d.push([LABEL_FILTER_KOLOM[k] || k, k==='status' && STATUS[v] ? STATUS[v].label : v]);
+    d.push([LABEL_FILTER_KOLOM[k] || k, k==='status' && STATUS[v] ? STATUS[v].label : (k==='case' ? (LABEL_FILTER_CASE[v] || v) : v)]);
   });
   if(state.refDate) d.push(['Tanggal acuan', state.refDate]);
   if(state.sortKey) d.push(['Urut', (LABEL_FILTER_KOLOM[state.sortKey] || state.sortKey) + (state.sortDir==='desc' ? ' (turun)' : ' (naik)')]);
   return d;
 }
 function exportData(rows){
-  return (rows || visibleRows()).map(r=>({
+  const caseMode = !!(window.INVCase && INVCase.aktif());
+  return (rows || visibleRows()).map(r=>Object.assign({
     'PEB': r.peb,
     'Kategori': r.category,
     'No. AJU': r.aju,
@@ -1723,7 +1836,7 @@ function exportData(rows){
     'Sumber File': r.src,
     'STATUS': STATUS[r.status].label,
     'Catatan': state.notes.get(r.peb) || ''
-  }));
+  }, caseMode ? {'Status Case': INVCase.ringkas(r.peb)} : {}));
 }
 function stamp(){ return new Date().toISOString().slice(0,10).replace(/-/g,''); }
 
@@ -1805,7 +1918,7 @@ document.getElementById('tabBtnRecon').onclick = ()=>switchTab('recon');
 document.getElementById('tabBtnList').onclick  = ()=>switchTab('list');
 
 /* Unduh semua: seluruh baris hasil, apa pun filter yang sedang aktif */
-document.getElementById('btnXlsx').onclick = ()=>{
+document.getElementById('btnXlsx').onclick = async ()=>{
   if(!state.rows.length){ gltToast('Belum ada hasil untuk diunduh.', 'warn'); return; }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportData(allRowsSorted())), 'Hasil Cek');
@@ -1813,6 +1926,12 @@ document.getElementById('btnXlsx').onclick = ()=>{
   const sum = Object.keys(STATUS).map(k=>({'Status':STATUS[k].label,'Jumlah PEB':c[k]}));
   sum.push({'Status':'TOTAL','Jumlah PEB':state.rows.length});
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), 'Ringkasan');
+  /* mode case: seluruh case + riwayat audit-nya (riwayat diambil dari server, bisa beberapa detik) */
+  if(window.INVCase && INVCase.aktif()){
+    XLSX.utils.book_append_sheet(wb, INVCase.sheetCases(), 'Case');
+    try{ XLSX.utils.book_append_sheet(wb, await INVCase.sheetRiwayat(INVCase.kunciHasil()), 'Riwayat Case'); }
+    catch(e){ gltToast('Riwayat case gagal diambil dari server, sheet riwayat dilewati: ' + (e.message || e), 'warn', 9000); }
+  }
   XLSX.writeFile(wb, `Hasil_Cek_PEB_${stamp()}.xlsx`);
 };
 /* Unduh hasil filter: hanya baris yang sedang tampil (pencarian, legenda status, filter kolom, urutan) */
@@ -1835,6 +1954,7 @@ document.getElementById('btnXlsxFilter').onclick = ()=>{
   const info = XLSX.utils.aoa_to_sheet(L);
   info['!cols'] = [{wch:26}, {wch:60}];
   XLSX.utils.book_append_sheet(wb, info, 'Info Filter');
+  if(window.INVCase && INVCase.aktif()) XLSX.utils.book_append_sheet(wb, INVCase.sheetCases(rows.map(r=>r.peb)), 'Case');
   XLSX.writeFile(wb, `Hasil_Cek_PEB_FILTER_${stamp()}.xlsx`);
 };
 document.getElementById('btnCsv').onclick = ()=>{
@@ -1851,6 +1971,8 @@ document.getElementById('refDate').onchange = e=>{
   const v = e.target.value;                       /* yyyy-mm-dd */
   state.refDate = v ? `${v.slice(8,10)}/${v.slice(5,7)}/${v.slice(0,4)}` : '';
   applyStatus(); renderLedger(); renderTable(true);
+  /* status baris ikut berubah -> bagikan ulang ke sesi bersama (owner saja; follower terkunci) */
+  if(window.SESI_INV && !ikutSesi() && SESI_INV.peran() === 'OWNER') SESI_INV.publikasi();
 };
 document.getElementById('btnRun').onclick = run;
 /* Satu listener di tbody menampung semua input catatan (delegasi event) */
@@ -2004,13 +2126,30 @@ async function unggahCatatan(file){
     {okLabel:'Simpan run', cancelLabel:'Nanti'});
   if(simpan) await saveRun();
 }
-document.getElementById('btnNoteTpl').onclick = unduhTemplateCatatan;
+/* mode case (SQL case sudah dijalankan): template & upload membuat/mengubah case; selain itu catatan per run seperti dulu */
+const caseAktif = ()=> !!(window.INVCase && INVCase.aktif());
+document.getElementById('btnNoteTpl').onclick = ()=> caseAktif() ? INVCase.unduhTemplate() : unduhTemplateCatatan();
 document.getElementById('btnNoteUp').onclick = ()=>document.getElementById('fileNotes').click();
 document.getElementById('fileNotes').addEventListener('change', e=>{
   const f = e.target.files[0]; e.target.value = '';
-  if(f) unggahCatatan(f);
+  if(f) caseAktif() ? INVCase.unggah(f) : unggahCatatan(f);
 });
 </script>
 <script src="glt-bulk-upload.js"></script>
+<script src="inventory-cases.js"></script>
+<script src="glt-shared-session.js"></script>
+<script>
+/* Sesi bersama Inventory (seperti Inbound): hasil pengecekan dibagikan, rekan bisa mengikuti */
+window.SESI_INV = window.GLTSession ? GLTSession.buat({
+  tool: 'rekonsiliasi_inventory', label: 'Rekonsiliasi Inventory', mount: '#sesiBar',
+  supa: ()=> supa,
+  identitas: ()=> ({user_id: currentUser ? currentUser.id : null, name: currentUser ? displayNameFromUser(currentUser) : ''}),
+  ambil: hasilBersama, terapkan: terapkanHasilBersama, adaHasil: ()=> state.rows.length > 0,
+  tampilan: {ambil: tampilanSaya, terapkan: terapkanTampilanBersama},
+  kunci: kunciFollower,
+  toast: gltToast, pilihan: gltChoice, konfirmasi: gltConfirm
+}) : null;
+if(window.SESI_INV && supaReady && typeof currentUser !== 'undefined' && currentUser) SESI_INV.mulai(currentUser);
+</script>
 </body>
 </html>

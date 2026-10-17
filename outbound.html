@@ -811,6 +811,9 @@ td.adj:hover{background:#DBEAFE}
   <div class="off-state" id="offState" data-s="ready">READY</div>
 </div>
 
+<!-- sesi bersama (glt-shared-session.js): tampil bila ada sesi aktif yang Anda pimpin / ikuti -->
+<div id="sesiBar" hidden></div>
+
 <section class="sec">
   <div class="sec-head">
     <h2>Masukkan semua berkas</h2>
@@ -2343,6 +2346,7 @@ async function refreshAuthUI(session){
     await pushLegacyIfNeeded();
     // case per baris (outbound-cases.js); tanpa SQL case halaman tetap memakai catatan per run
     if(window.OBCase){ await OBCase.mulai(user); if(R) gambarUlangSemua(); }
+    if(window.SESI_OB) SESI_OB.mulai(user);   // sesi bersama: lanjutkan sesi sendiri / tawarkan mengikuti sesi rekan
     renderOfficial(); updateNoteCount();
     if($("#runPanel").classList.contains("on")) renderRunList();
     if($("#dataPanel").classList.contains("on")) renderDataPanel();
@@ -2350,6 +2354,7 @@ async function refreshAuthUI(session){
     document.body.classList.remove("authed");
     $("#acctEmail").textContent = "";
     if(window.OBCase) OBCase.berhenti();
+    if(window.SESI_OB) SESI_OB.berhenti();
   }
 }
 
@@ -2594,14 +2599,17 @@ function gambarDaftar(){
   $("#clearAll").addEventListener("click", ()=>{ berkas = []; gambarDaftar(); });
   updateRun();
 }
+/* Sedang mengikuti sesi bersama orang lain? (unggah & jalankan pengecekan dikunci) */
+function ikutSesi(){ return !!(window.SESI_OB && SESI_OB.mengikuti()); }
 function tambahBerkas(list){
+  if(ikutSesi()){ gltToast("Anda sedang mengikuti sesi bersama. Berhenti mengikuti dulu untuk mengunggah berkas sendiri.", "warn"); return; }
   const baru = Array.from(list).filter(f=>/\.xlsx?$|\.xlsm$/i.test(f.name));
   baru.forEach(f=>{
     if(!berkas.some(x=>x.name===f.name && x.size===f.size)) berkas.push(f);
   });
   gambarDaftar();
 }
-function updateRun(){ $("#run").disabled = !berkas.length; }
+function updateRun(){ $("#run").disabled = !berkas.length || ikutSesi(); }
 (function(){
   const drop = $("#drop"), input = $("#fAll");
   drop.addEventListener("click", ()=>input.click());
@@ -2633,6 +2641,7 @@ function fail(msg){
 }
 
 $("#run").addEventListener("click", async () => {
+  if(ikutSesi()){ gltToast("Anda sedang mengikuti sesi bersama. Berhenti mengikuti dulu untuk menjalankan pengecekan sendiri.", "warn"); return; }
   $("#alert").classList.remove("on");
   $("#results").classList.remove("on");
   $("#prog").classList.add("on");
@@ -2689,6 +2698,8 @@ $("#run").addEventListener("click", async () => {
     tick("Selesai \u00b7 " + RUN.runId, 100);
     setTimeout(()=>$("#prog").classList.remove("on"), 700);
     showResults();
+    // sesi bersama: hasil ini dibagikan ke rekan (Anda menjadi owner sesi)
+    if(window.SESI_OB) SESI_OB.publikasi();
   }catch(e){
     console.error(e);
     fail(e.message || String(e));
@@ -2701,9 +2712,11 @@ $("#run").addEventListener("click", async () => {
 /* ====================== tampilkan hasil ====================== */
 function showResults(){
   $("#results").classList.add("on");
-  // mode case: isi catatan/penyesuaian dari case lalu evaluasi ulang penyesuaian "belum tersedia"
-  if(window.OBCase && OBCase.aktif()) OBCase.setelahHasil();
-  saveNotes();
+  // mode case: isi catatan/penyesuaian dari case lalu evaluasi ulang penyesuaian "belum tersedia".
+  // Follower sesi bersama: hanya menampilkan — evaluasi ulang & penyimpanan run dikerjakan owner.
+  const ikut = ikutSesi();
+  if(window.OBCase && OBCase.aktif()){ if(ikut) OBCase.terapkan(); else OBCase.setelahHasil(); }
+  if(ikut) updateNoteCount(); else saveNotes();
   $("#periode").textContent = "Periode folder 08 · " + fmtD(R.periodeLo) + " – " + fmtD(R.periodeHi);
   card("A", R.A, "kemasan08", "qtyLap", "CT", "CTN", "baris");
   card("B", R.B, "qty08", "qtyScm", "unit", "unit", "baris");
@@ -2715,7 +2728,7 @@ function showResults(){
   const adaMasalah = (R.tidakDinilai && R.tidakDinilai.length) ||
                      (VAL && (VAL.anomali.length || VAL.cek.some(c=>c.tingkat==="bad")));
   setState(adaMasalah ? "warning" : "completed", adaMasalah ? "WARNING" : "COMPLETED");
-  scrollTo_($("#results"), "start");
+  if(!ikut) scrollTo_($("#results"), "start");   // follower: jangan melompat setiap owner memperbarui hasil
 }
 
 // sisi P3BET dan sisi pembanding per tab; sisi yang kosong dihitung 0
@@ -3589,7 +3602,7 @@ function usulanSalin(){
 function renderCarry(){
   const el = $("#carry");
   // mode case: case melekat pada baris dan otomatis berlaku di run baru, tidak perlu disalin
-  if(!RUN || (window.OBCase && OBCase.aktif())){ el.classList.remove("on"); return; }
+  if(!RUN || ikutSesi() || (window.OBCase && OBCase.aktif())){ el.classList.remove("on"); return; }
   const u = usulanSalin();
   if(!u.n && !u.m){ el.classList.remove("on"); el.innerHTML = ""; return; }
   const asal = Array.from(new Set(Object.values(u.asal))).slice(0,3).join(", ");
@@ -4427,5 +4440,62 @@ window.RekonGLT = {
 <!-- Case per baris (seperti Inbound) + bulk upload. Tanpa SQL case Outbound keduanya diam. -->
 <script src="glt-bulk-upload.js"></script>
 <script src="outbound-cases.js"></script>
+<script src="glt-shared-session.js"></script>
+<script>
+/* Sesi bersama Outbound (seperti Inbound): hasil pengecekan dibagikan, rekan bisa mengikuti */
+function hasilBersamaOB(){
+  if(!R) return null;
+  // nama berkas per jenis (dari daftar sumber run; mencakup P3BET setahun & jadwal K+N)
+  const src = {};
+  ((RUN && RUN.meta && RUN.meta.sources) || []).forEach(x=>{ const k = x.label || x.jenis || "berkas"; src[k] = src[k] ? src[k] + ", " + x.nama : x.nama; });
+  return {
+    data:{v:1, R, VAL, runId:RUN ? RUN.runId : null, run:RUN ? {runId:RUN.runId, meta:RUN.meta} : null},
+    periodKey: fmtD(R.periodeLo) + " – " + fmtD(R.periodeHi) + (RUN ? " · " + RUN.runId : ""),
+    sourceNames: Object.keys(src).length ? src : null
+  };
+}
+async function terapkanHasilBersamaOB(d){
+  R = d.R; VAL = d.VAL || null; filterEksepsi = null; active = null;
+  // run owner tersimpan di server (tabel runs); tarik bila belum ada di perangkat ini
+  let run = d.runId ? Store.run(d.runId) : null;
+  if(!run && d.runId){ await pullFromSupabase(); run = Store.run(d.runId); }
+  if(!run && d.run) run = runKosong(d.run.runId, d.run.meta || {});
+  if(run) bindRun(run);
+  $("#alert").classList.remove("on"); $("#prog").classList.remove("on");
+  showResults();
+}
+function tampilanSayaOB(){
+  const L = window.OBCase && OBCase.aktif() ? OBCase._st.laci : null;
+  return {active, q:$("#q").value, fstat:$("#fstat").value, fnote:$("#fnote").value, fperiode:$("#fperiode").value,
+    sortCol, sortDir, filterEksepsi, laci:L ? L.key : (drKey || null)};
+}
+function terapkanTampilanBersamaOB(v){
+  if(!R) return;
+  if(v.active && v.active !== active && available().some(([k])=>k === v.active)) setTab(v.active);
+  $("#q").value = v.q || ""; $("#fstat").value = v.fstat || ""; $("#fnote").value = v.fnote || ""; $("#fperiode").value = v.fperiode || "";
+  sortCol = (v.sortCol === undefined ? null : v.sortCol); sortDir = v.sortDir || 1; filterEksepsi = v.filterEksepsi || null;
+  document.querySelectorAll("#exGrid .ex").forEach(b => b.style.outline = (b.dataset.ex === filterEksepsi ? "2px solid var(--indigo)" : ""));
+  limit = 250; drawTable(); tandaiLegenda();
+  // laci rincian ikut owner, kecuali Anda sedang mengetik di laci sendiri
+  if(window.OBCase && OBCase.aktif()){
+    const L = OBCase._st.laci, sibuk = L && (L.edit || L.dirty);
+    if(v.laci && (!L || L.key !== v.laci) && !sibuk) bukaLaci(v.laci);
+    else if(!v.laci && L && !sibuk) tutupLaci();
+  }else if(v.laci !== (drKey || null)){
+    if(v.laci) bukaLaci(v.laci); else tutupLaci();
+  }
+}
+window.SESI_OB = window.GLTSession ? GLTSession.buat({
+  tool:"rekonsiliasi_outbound", label:"Rekonsiliasi Outbound", mount:"#sesiBar",
+  supa:()=> supa,
+  identitas:()=> ({user_id:currentUser ? currentUser.id : null, name:currentUser ? displayNameFromUser(currentUser) : ""}),
+  ambil:hasilBersamaOB, terapkan:terapkanHasilBersamaOB, adaHasil:()=> !!R,
+  tampilan:{ambil:tampilanSayaOB, terapkan:terapkanTampilanBersamaOB},
+  kunci:f=>{ document.body.classList.toggle("sesi-follower", f); updateRun(); },
+  toast:gltToast, pilihan:gltChoice, konfirmasi:gltConfirm
+}) : null;
+if(window.SESI_OB && supaReady && currentUser) SESI_OB.mulai(currentUser);
+</script>
+<style>body.sesi-follower #drop{opacity:.45;pointer-events:none}   /* mengikuti sesi bersama: unggah dikunci */</style>
 </body>
 </html>
