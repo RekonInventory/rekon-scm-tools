@@ -1756,15 +1756,19 @@ function rekonA(docs, nike, adidas, tol, tolHari, jadwal, opsi){
   .map(d=>{
     const wajar = d.tglStuffing && d.tglDaftar && Math.abs(days(d.tglStuffing,d.tglDaftar))<120;
     const ref = wajar ? d.tglStuffing : d.tglDaftar;
+    // Dokumen P3BET yang dibatalkan seluruhnya TIDAK dibandingkan dengan laporan Adidas/Nike
+    // (tidak dicari padanannya sama sekali; statusnya PEMBATALAN).
+    const dibatalkan = !!(d.batalBaris && d.batalBaris === d.totalBaris);
     let src=null, grp=null, reused=false;
-    if(d.ctr && adidas.has(d.ctr)){ src="ADIDAS"; [grp,reused]=pickGroup(adidas.get(d.ctr),ref); }
-    else if(d.ctr && nike.has(d.ctr)){ src="NIKE"; [grp,reused]=pickGroup(nike.get(d.ctr),ref); }
+    if(!dibatalkan){
+      if(d.ctr && adidas.has(d.ctr)){ src="ADIDAS"; [grp,reused]=pickGroup(adidas.get(d.ctr),ref); }
+      else if(d.ctr && nike.has(d.ctr)){ src="NIKE"; [grp,reused]=pickGroup(nike.get(d.ctr),ref); }
+    }
 
     const o = {brand:src||d.brand, kontainer:d.kontainer, tglStuffing08:d.tglStuffing,
                nomorDaftar:d.nomorDaftar, tglDaftar:d.tglDaftar, kemasan08:d.kemasan,
                batalKemasan08:d.batalBaris ? d.batalKemasan : 0,
                sumber:src||"\u2014", aju:d.aju, file:d.file};
-    const dibatalkan = !!(d.batalBaris && d.batalBaris === d.totalBaris);
     if(!grp){
       // container kosong tidak akan pernah cocok, jadi tidak ikut aturan outbound hari ini
       const hariIni = !dibatalkan && !!d.ctr && statusHariIni(opsi.today, d.tglDaftar, d.tglStuffing);
@@ -1914,7 +1918,9 @@ function rekonB(docs, scm, tol, margin, opsi){
                  qty08:g.qty, uom08:Array.from(g.uom).sort().join("; "),
                  batalSatuan08:g.batalBaris ? g.batalSatuan : 0,
                  aju:Array.from(g.aju).sort().join("; ").slice(0,60), file:g.file};
-      if(!s){
+      // Dibatalkan seluruhnya: tidak dibandingkan dengan SCM. Padanannya tetap ditandai terpakai
+      // supaya baris SCM-nya tidak muncul sebagai "TIDAK ADA DI P3BET".
+      if(!s || dibatalkan){
         const hariIni = !dibatalkan && statusHariIni(opsi.today, g.tglDaftar);
         Object.assign(o,{job:"",gi:null,tglScm:null,qtyScm:null,selisih:null,baris:0,uomScm:"",exportir:"",
           status: dibatalkan ? "PEMBATALAN" : (hariIni ? OUTBOUND_HARI_INI : "TIDAK ADA DI SCM"),
