@@ -409,6 +409,131 @@ tbody tr:hover{background:var(--surface-muted)}
 .runrow{border-bottom-color:var(--border-soft)}
 .runrow .rid{color:var(--text-muted)}
 .authbox{box-shadow:var(--gs-shadow-md);border-radius:var(--gs-radius-lg);padding:28px 26px}
+
+/* ==========================================================================
+   PERBAIKAN TAMPILAN 2026-11-15 — hanya presentasi (mesin pencocokan tidak diubah).
+   Sama pola dengan Outbound: tiga tingkat perhatian (merah = tindakan, amber = cek,
+   abu/biru = informasi, redup = cocok), kartu "Yang perlu diurus", chip filter,
+   filter kolom dilipat, area unggah dilipat setelah pengecekan.
+   ========================================================================== */
+.wrap{max-width:1440px}
+.band{margin-bottom:18px}
+.band-in{padding:16px 20px 14px;align-items:center}
+.band h1{font-size:21px}
+.band .sub{font-size:13px;margin-top:3px}
+.step{margin-bottom:20px}
+.step-no{font-size:11px;font-weight:600}
+
+/* Langkah 1-2 dilipat sesudah pengecekan */
+.unggah-ringkas{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--gs-radius-lg);font-size:13px;color:var(--text-secondary)}
+.unggah-ringkas[hidden]{display:none}
+.unggah-ringkas .ur-teks{flex:1;min-width:200px}
+.unggah-ringkas .ur-teks b{color:var(--text);font-weight:600}
+#secUnggah.lipat{display:none}
+
+/* Kartu "Yang perlu diurus" */
+.perlu{margin-bottom:14px}
+.perlu-kal{margin:0 0 10px;font-size:13.5px;color:var(--text-secondary)}
+.perlu-kal b{color:var(--text);font-variant-numeric:tabular-nums}
+.perlu-utama{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pl-kartu{font:inherit;text-align:left;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-left-width:4px;
+  border-radius:var(--gs-radius-lg);padding:13px 18px;display:flex;flex-direction:column;gap:2px;color:var(--text);
+  transition:border-color .12s ease-out,box-shadow .12s ease-out}
+.pl-kartu:hover{box-shadow:var(--gs-shadow-sm);border-color:var(--border-strong)}
+.pl-kartu:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.pl-kartu .lbl{font-size:13px;font-weight:600}
+.pl-kartu .val{font-size:32px;line-height:1.1;margin-top:2px;font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
+.pl-kartu .sub{font-size:12px;color:var(--text-secondary)}
+.pl-kartu.tact{border-left-color:var(--danger);background:#FDF3F2}
+.pl-kartu.tact .val{color:var(--danger)}
+.pl-kartu.tchk{border-left-color:#D97706;background:#FEF9EC}
+.pl-kartu.tchk .val{color:#B45309}
+.pl-kartu.nol{opacity:.55}
+.pl-kartu.aktif{box-shadow:0 0 0 2px var(--primary)}
+.perlu-info{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.pl-chip{font:inherit;font-size:12.5px;cursor:pointer;display:inline-flex;gap:6px;align-items:baseline;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--gs-radius-pill);padding:5px 12px;color:var(--text-secondary)}
+.pl-chip b{font-family:var(--mono);color:var(--text);font-variant-numeric:tabular-nums}
+.pl-chip:hover{border-color:var(--border-strong);background:var(--surface-muted)}
+.pl-chip.aktif{border-color:var(--primary);background:var(--primary-soft);color:var(--primary-dark)}
+.pl-chip:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.t-hint{font-weight:400;font-size:12px;color:var(--text-muted)}
+.ledger{margin-bottom:12px}
+
+/* Toolbar */
+.tools{position:relative}
+.tools input[type=text]#search{flex:0 1 320px;min-width:200px}
+.tools-spacer{flex:1}
+.count{font-family:var(--mono);font-size:12px;color:var(--text-muted)}
+#caseSummary{font-size:12px;color:var(--text-muted)}
+.menu-wrap{position:relative}
+.menu-more{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:220px;display:flex;flex-direction:column;gap:2px;
+  padding:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--gs-radius-lg);box-shadow:var(--gs-shadow-md,0 8px 24px rgba(15,23,42,.14))}
+.menu-more[hidden]{display:none}
+.menu-more .btn{width:100%;text-align:left;border:0;background:transparent;box-shadow:none;padding:8px 10px;font-weight:500}
+.menu-more .btn:hover{background:var(--surface-muted)}
+.menu-more .mh{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);padding:8px 10px 3px}
+.menu-more .mh:first-child{padding-top:4px}
+#btnColFilters[aria-pressed=true]{background:var(--primary-soft);border-color:var(--primary);color:var(--primary-dark)}
+
+/* Chip filter aktif */
+.chipbar{display:none;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px}
+.chipbar.on{display:flex}
+.chip{display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:12.5px;line-height:1;padding:6px 8px 6px 11px;
+  background:var(--primary-soft);color:var(--primary-dark);border:1px solid transparent;border-radius:var(--gs-radius-pill);cursor:pointer}
+.chip span{font-size:15px;line-height:.8;opacity:.7}
+.chip:hover{border-color:var(--primary)}
+.chip:hover span{opacity:1}
+.chip:focus-visible,.chip-reset:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.chip-reset{font:inherit;font-size:12.5px;color:var(--text-secondary);background:none;border:0;padding:6px;cursor:pointer;text-decoration:underline}
+.chip-reset:hover{color:var(--text)}
+
+/* Tabel: tinggi mengikuti layar, filter kolom dilipat, 2 kolom identitas menempel */
+#tbl .frow{display:none}
+body.col-filter-on #tbl .frow{display:table-row}
+.tbl-wrap{max-height:max(420px,calc(100vh - 150px))}
+thead th.num{text-align:right}
+td.num{font-variant-numeric:tabular-nums}
+td.aju{font-size:11.5px;max-width:none;word-break:normal;white-space:nowrap;color:var(--text-muted)}
+td.dim{color:var(--text-muted);font-size:12px;white-space:nowrap;max-width:210px;overflow:hidden;text-overflow:ellipsis}
+tbody td{vertical-align:middle;white-space:nowrap}
+tbody td.notecell{white-space:normal;min-width:160px;max-width:300px}
+tbody td.casecell{white-space:normal}
+.frow th.cf-range{display:table-cell;white-space:nowrap;min-width:120px}
+.frow th.cf-range input{display:inline-block;width:calc(50% - 2px);min-width:56px}
+.frow th{vertical-align:middle}
+td.sel{font-weight:600}
+td.sel.nol{font-weight:400;color:var(--text-muted)}
+td.sel.plus{color:#B45309}
+td.sel.minus{color:var(--danger)}
+#tbl thead th:nth-child(-n+2),#tbl tbody td:nth-child(-n+2){position:sticky;z-index:1}
+#tbl thead th:nth-child(-n+2){z-index:4}
+#tbl thead th:first-child,#tbl tbody td:first-child{left:0}
+#tbl thead th:nth-child(2),#tbl tbody td:nth-child(2){left:var(--c0w,92px);box-shadow:1px 0 0 var(--border)}
+#tbl tbody td:nth-child(-n+2){background:var(--surface)}
+#tbl tbody tr.r-act td{background:#FDF3F2}
+#tbl tbody tr.r-act:hover td{background:#FBE7E4}
+#tbl tbody tr.r-act td:first-child{box-shadow:inset 3px 0 0 var(--danger)}
+#tbl tbody tr.r-chk td{background:#FEF9EC}
+#tbl tbody tr.r-chk:hover td{background:#FCF1D3}
+#tbl tbody tr.r-chk td:first-child{box-shadow:inset 3px 0 0 #D97706}
+#tbl tbody tr.r-info td:first-child{box-shadow:inset 3px 0 0 var(--border-strong)}
+#tbl tbody tr.r-ok td{color:var(--text-muted)}
+#tbl tbody tr.r-ok .t-ok{background:transparent;color:var(--text-muted);font-weight:500;padding-left:0}
+#tbl tbody tr.r-ok .tag.t-cat-nike,#tbl tbody tr.r-ok .tag.t-cat-adidas{opacity:.75}
+/* Kolom Case: baris yang perlu diurus tetapi belum punya case diberi petunjuk */
+body.inv-case-mode #tbl tbody tr.r-act td.casecell.kosong::after,
+body.inv-case-mode #tbl tbody tr.r-chk td.casecell.kosong::after{content:"belum ada case";font-size:11.5px;color:var(--text-muted)}
+body.inv-case-mode #tbl tbody tr.r-act:hover td.casecell.kosong::after,
+body.inv-case-mode #tbl tbody tr.r-chk:hover td.casecell.kosong::after{content:"+ buat case";color:var(--primary);font-weight:600}
+td.casecell{min-width:120px}
+@media (max-width:900px){
+  #tbl tbody td:nth-child(-n+2){position:static}
+  #tbl thead th:nth-child(-n+2){left:auto}
+  .perlu-utama{grid-template-columns:1fr}
+}
+@media (max-width:1100px){.band .sub{display:none}}
 </style>
 </head>
 <body data-module="inventory">
@@ -444,7 +569,7 @@ tbody tr:hover{background:var(--surface-muted)}
     <div>
       <div class="eyebrow">Rekonsiliasi PEB · Inventory ↔ SCM</div>
       <h1>Cek Inventory vs Laporan SCM</h1>
-      <div class="sub">Cocokkan nomor PEB dan jumlah karton antara laporan gudang dan laporan SCM. File diproses di browser — hasil &amp; catatan disinkronkan ke server bersama.</div>
+      <div class="sub">Cocokkan nomor PEB dan jumlah karton antara laporan gudang dan laporan SCM. File diproses di browser; hasil dan catatan disimpan di server bersama.</div>
     </div>
     <div class="meta">
       <div>Dijalankan <b id="runDate">—</b></div>
@@ -459,10 +584,17 @@ tbody tr:hover{background:var(--surface-muted)}
   <!-- sesi bersama (glt-shared-session.js): tampil bila ada sesi aktif yang Anda pimpin / ikuti -->
   <div id="sesiBar" hidden></div>
 
+  <!-- Langkah 1-2 dilipat otomatis setelah pengecekan selesai; "Ganti berkas" membukanya lagi -->
+  <div class="unggah-ringkas" id="unggahRingkas" hidden>
+    <span class="ur-teks" id="unggahRingkasTeks"></span>
+    <button type="button" class="btn btn-ghost btn-sm" id="btnGantiBerkas">Ganti berkas</button>
+  </div>
+  <div id="secUnggah">
+
   <!-- STEP 1 -->
   <div class="step">
     <div class="step-head">
-      <span class="step-no">01</span>
+      <span class="step-no">Langkah 1</span>
       <span class="step-title">Masukkan file</span>
       <span class="step-hint">Format .xlsx / .xls / .csv</span>
     </div>
@@ -480,9 +612,9 @@ tbody tr:hover{background:var(--surface-muted)}
   <!-- STEP 2 -->
   <div class="step">
     <div class="step-head">
-      <span class="step-no">02</span>
+      <span class="step-no">Langkah 2</span>
       <span class="step-title">Jalankan pengecekan</span>
-      <span class="step-hint">Kolom terisi otomatis — ubah di kartu file bila salah</span>
+      <span class="step-hint">Kolom terisi otomatis; ubah di kartu file bila salah</span>
     </div>
     <div class="runbar">
       <button class="btn btn-main" id="btnRun" disabled>Jalankan pengecekan</button>
@@ -491,13 +623,17 @@ tbody tr:hover{background:var(--surface-muted)}
     </div>
   </div>
 
+  </div><!-- /secUnggah -->
+
   <!-- STEP 3 -->
   <div class="step hide" id="resultStep">
     <div class="step-head">
-      <span class="step-no">03</span>
+      <span class="step-no">Langkah 3</span>
       <span class="step-title">Hasil</span>
-      <span class="step-hint">Klik batang atau label untuk menyaring</span>
+      <span class="step-hint">Mulai dari kartu "Yang perlu diurus" di bawah</span>
     </div>
+
+    <div class="perlu" id="perluDiurus"></div>
 
     <div class="tabbar">
       <button class="tabbtn active" id="tabBtnRecon" data-tab="recon">Rekonsiliasi</button>
@@ -507,7 +643,7 @@ tbody tr:hover{background:var(--surface-muted)}
     <div id="panelRecon">
       <div class="ledger">
         <div class="ledger-h">
-          <span class="t">Sebaran status per nomor PEB</span>
+          <span class="t">Sebaran status per nomor PEB <span class="t-hint">(klik batang atau label untuk menyaring)</span></span>
           <span class="n" id="ledgerTotal"></span>
         </div>
         <div class="strip" id="strip"></div>
@@ -520,17 +656,28 @@ tbody tr:hover{background:var(--surface-muted)}
       </div>
 
       <div class="tools">
-        <input type="text" id="search" placeholder="Cari PEB, AJU, job, atau nama shipper…">
-        <button class="btn btn-ghost btn-sm" id="btnSaveRun">Simpan run</button>
-        <button class="btn btn-ghost btn-sm" id="btnRunHist">Riwayat run</button>
-        <button class="btn btn-ghost btn-sm" id="btnXlsx" title="Seluruh baris hasil, tanpa memperhatikan filter">Unduh semua (.xlsx)</button>
-        <button class="btn btn-ghost btn-sm" id="btnXlsxFilter" title="Hanya baris yang sedang tampil sesuai pencarian, status, filter kolom, dan urutan">Unduh hasil filter (.xlsx)</button>
-        <button class="btn btn-ghost btn-sm" id="btnCsv" title="Hanya baris yang sedang tampil">Unduh hasil filter (.csv)</button>
-        <button class="btn btn-ghost btn-sm" id="btnNoteTpl" title="Template Excel berisi baris yang sedang tampil, untuk mengisi catatan per PEB secara massal">Template catatan</button>
-        <button class="btn btn-ghost btn-sm" id="btnNoteUp" title="Unggah template catatan yang sudah diisi; tampil pratinjau dulu">Upload catatan</button>
-        <input type="file" id="fileNotes" accept=".xlsx,.xlsm,.xls" hidden>
+        <input type="text" id="search" placeholder="Cari PEB, AJU, job, atau shipper…" aria-label="Cari baris hasil">
+        <button class="btn btn-ghost btn-sm" id="btnColFilters" type="button" aria-pressed="false" title="Tampilkan atau sembunyikan kotak filter di tiap kolom">Filter kolom</button>
+        <span class="count" id="toolCount"></span>
         <span id="caseSummary"></span>
+        <span class="tools-spacer"></span>
+        <button class="btn btn-ghost btn-sm" id="btnSaveRun">Simpan run</button>
+        <button class="btn btn-ghost btn-sm" id="btnXlsx" title="Seluruh baris hasil, tanpa memperhatikan filter">Unduh semua (.xlsx)</button>
+        <button class="btn btn-main btn-sm" id="btnXlsxFilter" title="Hanya baris yang sedang tampil sesuai pencarian, status, filter kolom, dan urutan">Unduh hasil filter (.xlsx)</button>
+        <div class="menu-wrap">
+          <button class="btn btn-ghost btn-sm" id="btnMenuLain" type="button" aria-haspopup="true" aria-expanded="false">Lainnya ▾</button>
+          <div class="menu-more" id="menuLain" hidden role="menu">
+            <div class="mh">Catatan massal</div>
+            <button class="btn btn-ghost btn-sm" id="btnNoteTpl" role="menuitem" title="Template Excel berisi baris yang sedang tampil, untuk mengisi catatan per PEB secara massal">Template catatan</button>
+            <button class="btn btn-ghost btn-sm" id="btnNoteUp" role="menuitem" title="Unggah template catatan yang sudah diisi; tampil pratinjau dulu">Upload catatan</button>
+            <div class="mh">Data</div>
+            <button class="btn btn-ghost btn-sm" id="btnRunHist" role="menuitem">Riwayat run</button>
+            <button class="btn btn-ghost btn-sm" id="btnCsv" role="menuitem" title="Hanya baris yang sedang tampil">Unduh hasil filter (.csv)</button>
+          </div>
+        </div>
+        <input type="file" id="fileNotes" accept=".xlsx,.xlsm,.xls" hidden>
       </div>
+      <div class="chipbar" id="chipbar" aria-label="Filter aktif"></div>
       <div class="runhistpanel" id="runHistPanel">
         <h3>Run tersimpan</h3>
         <div id="runHistList"></div>
@@ -974,6 +1121,7 @@ async function openRun(id){
     document.getElementById('resultStep').classList.remove('hide');
     if(window.INVCase && INVCase.aktif()) INVCase.terapkan();   /* mode case: catatan selalu dari case, bukan dari salinan di run */
     renderLedger(); renderTable(true); renderListing(true);
+    lipatUnggah(true);
     document.getElementById('runHistPanel').classList.remove('on');
     document.getElementById('resultStep').scrollIntoView({behavior:'smooth',block:'start'});
     setSyncStatus('run dibuka · ' + new Date().toLocaleTimeString('id-ID'));
@@ -1566,6 +1714,7 @@ function run(){
   /* mode case: catatan & kolom Case diturunkan dari case server (melekat pada PEB, berlaku di setiap pengecekan) */
   if(window.INVCase && INVCase.aktif()) INVCase.terapkan();
   renderLedger(); renderTable(true); renderListing(true);
+  lipatUnggah(true);
   document.getElementById('resultStep').scrollIntoView({behavior:'smooth',block:'start'});
   /* sesi bersama: hasil ini dibagikan ke rekan (Anda menjadi owner sesi) */
   if(window.SESI_INV) SESI_INV.publikasi();
@@ -1598,6 +1747,7 @@ function terapkanHasilBersama(d){
   document.getElementById('resultStep').classList.remove('hide');
   if(window.INVCase && INVCase.aktif()) INVCase.terapkan();
   renderLedger(); renderTable(true); renderListing(true);
+  lipatUnggah(true);
 }
 function tampilanSaya(){
   const L = window.INVCase && INVCase.aktif() ? INVCase._st.laci : null;
@@ -1671,6 +1821,50 @@ function renderLedger(){
     l.onclick = ()=>toggleFilter(k);
     legend.appendChild(l);
   });
+  renderPerluDiurus();
+}
+
+/* ================= Tingkat perhatian & ringkasan "Yang perlu diurus" =================
+   Hanya tampilan; status tiap baris tetap hasil mesin pencocokan.
+   act  = perlu tindakan (merah)   : NO_SCM, NO_INV  — PEB hanya ada di satu sisi
+   chk  = perlu dicek (amber)      : SELISIH         — qty beda
+   info = informasi (abu)          : OUTBOUND, INBOUND — menunggu pencatatan sesuai tanggal acuan
+   ok   = cocok (redup)            : MATCH */
+const TINGKAT = {NO_SCM:'act', NO_INV:'act', SELISIH:'chk', OUTBOUND:'info', INBOUND:'info', MATCH:'ok'};
+const URUT_TINGKAT = {act:0, chk:1, info:2, ok:3};
+const KARTU = [
+  {id:'act', kelas:'tact', lbl:'Perlu tindakan', status:['NO_SCM','NO_INV'], ket:'PEB hanya ada di satu sisi'},
+  {id:'chk', kelas:'tchk', lbl:'Perlu dicek', status:['SELISIH'], ket:'jumlah karton berbeda'}
+];
+const sameSet = (set, arr)=> set.size===arr.length && arr.every(x=>set.has(x));
+function setFilterStatus(arr){
+  state.filter = sameSet(state.filter, arr) ? new Set() : new Set(arr);
+  renderLedger(); renderTable(true);
+}
+function renderPerluDiurus(){
+  const el = document.getElementById('perluDiurus');
+  if(!el) return;
+  const c = counts(), n = state.rows.length;
+  const jml = arr=>arr.reduce((s,k)=>s+(c[k]||0),0);
+  const act = jml(['NO_SCM','NO_INV']), chk = c.SELISIH||0, tunggu = (c.OUTBOUND||0)+(c.INBOUND||0), cocok = c.MATCH||0;
+  const rinci = k=> (c[k] ? `${c[k].toLocaleString('id-ID')} ${STATUS[k].label.replace(/^(\w)/, m=>m.toLowerCase()).replace(/\bscm\b/i,'SCM').replace(/\binventory\b/i,'Inventory')}` : '');
+  el.innerHTML =
+    `<p class="perlu-kal"><b>${n.toLocaleString('id-ID')}</b> PEB diperiksa · <b>${(act+chk).toLocaleString('id-ID')}</b> perlu diurus · `+
+    `<b>${cocok.toLocaleString('id-ID')}</b> cocok${tunggu ? ` · <b>${tunggu.toLocaleString('id-ID')}</b> menunggu pencatatan` : ''}</p>`+
+    `<div class="perlu-utama">` + KARTU.map(k=>{
+      const v = jml(k.status);
+      return `<button type="button" class="pl-kartu ${k.kelas}${v?'':' nol'}${sameSet(state.filter,k.status)?' aktif':''}" data-kartu="${k.id}"
+        title="Klik untuk menyaring tabel; klik lagi untuk melepas">
+        <span class="lbl">${k.lbl}</span><span class="val">${v.toLocaleString('id-ID')}</span>
+        <span class="sub">${v ? k.status.map(rinci).filter(Boolean).join(' · ') : k.ket}</span></button>`;
+    }).join('') + `</div>` +
+    `<div class="perlu-info">`+
+      (tunggu ? `<button type="button" class="pl-chip${sameSet(state.filter,['OUTBOUND','INBOUND'])?' aktif':''}" data-chip="tunggu"
+        title="PEB tanpa pasangan yang tanggal GRN/keluarnya sama dengan tanggal acuan">Menunggu pencatatan <b>${tunggu.toLocaleString('id-ID')}</b></button>` : '')+
+      `<button type="button" class="pl-chip${sameSet(state.filter,['MATCH'])?' aktif':''}" data-chip="cocok">Cocok <b>${cocok.toLocaleString('id-ID')}</b></button>`+
+    `</div>`;
+  el.querySelectorAll('[data-kartu]').forEach(b=>b.onclick = ()=>setFilterStatus(KARTU.find(k=>k.id===b.dataset.kartu).status));
+  el.querySelectorAll('[data-chip]').forEach(b=>b.onclick = ()=>setFilterStatus(b.dataset.chip==='cocok' ? ['MATCH'] : ['OUTBOUND','INBOUND']));
 }
 
 /* ================= Tabel ================= */
@@ -1736,9 +1930,19 @@ function visibleRows(){
     if(!textOk(state.notes.get(r.peb), cf.notes)) return false;
     return true;
   });
-  if(state.sortKey) rows = rows.slice().sort(cmpRows);
+  /* urutan bawaan: perlu tindakan di atas, lalu selisih terbesar; klik judul kolom untuk urutan lain */
+  rows = rows.slice().sort(state.sortKey ? cmpRows : cmpPrioritas);
   return rows;
 }
+function cmpPrioritas(a,b){
+  const ta = URUT_TINGKAT[TINGKAT[a.status]]??9, tb = URUT_TINGKAT[TINGKAT[b.status]]??9;
+  if(ta!==tb) return ta-tb;
+  const da = a.diff==null ? -1 : Math.abs(a.diff), db = b.diff==null ? -1 : Math.abs(b.diff);
+  if(da!==db) return db-da;
+  return a.peb < b.peb ? -1 : (a.peb > b.peb ? 1 : 0);
+}
+/* selisih bertanda +/−, hanya untuk tampilan (ekspor tetap angka asli) */
+const fmtSel = d => d==null ? '' : (d===0 ? '0' : (d>0 ? '+' : '−') + fmt(Math.abs(d)));
 function renderTable(reset){
   const rows = visibleRows();
   if(reset) state.shown = 0;
@@ -1755,10 +1959,13 @@ function renderTable(reset){
       const r = rows[i], s = STATUS[r.status];
       const tr = document.createElement('tr');
       tr.dataset.peb = r.peb;
+      tr.className = 'r-' + (TINGKAT[r.status] || 'info');
       const ci = caseMode ? INVCase.info(r.peb) : null;
-      const caseCell = `<td class="col-case casecell">${ci
+      const adaCase = !!ci, perluCase = tr.className==='r-act' || tr.className==='r-chk';
+      const caseCell = `<td class="col-case casecell${adaCase ? '' : ' kosong'}">${ci
         ? `<span class="tag ${ci.kelas}">${escAttr(ci.teks)}</span>${ci.sub ? `<span class="cc-sub">${escAttr(ci.sub)}</span>` : ''}`
-        : '<span class="muted">—</span>'}</td>`;
+        : (perluCase ? '' : '<span class="muted">—</span>')}</td>`;
+      const selCls = r.diff==null ? '' : (r.diff===0 ? ' nol' : (r.diff>0 ? ' plus' : ' minus'));
       /* mode case: catatan hanya turunan dari case (diedit lewat laci rincian); mode lama: kotak isian per PEB */
       const noteCell = caseMode
         ? `<td class="notecell">${state.notes.get(r.peb) ? escAttr(state.notes.get(r.peb)) : '<span class="muted">—</span>'}</td>`
@@ -1767,16 +1974,16 @@ function renderTable(reset){
       tr.innerHTML = `
         <td class="mono">${escAttr(r.peb)}</td>
         <td>${r.category ? `<span class="tag ${r.category==='Nike'?'t-cat-nike':'t-cat-adidas'}">${escAttr(r.category)}</span>` : '<span class="muted">—</span>'}</td>
-        <td class="mono aju">${escAttr(r.aju) || '<span class="muted">—</span>'}</td>
+        <td class="mono aju" title="${escAttr(r.aju)}">${escAttr(r.aju) || '<span class="muted">—</span>'}</td>
         <td class="mono">${escAttr(r.job) || '<span class="muted">—</span>'}</td>
         <td class="mono nowrap">${escAttr(r.grn) || '<span class="muted">—</span>'}</td>
         <td class="mono nowrap">${escAttr(r.gout) || '<span class="muted">—</span>'}</td>
         <td class="mono nowrap">${escAttr(r.arr) || '<span class="muted">—</span>'}</td>
-        <td>${escAttr(r.shipInv) || '<span class="muted">—</span>'}</td>
-        <td>${escAttr(r.shipScm) || '<span class="muted">—</span>'}</td>
+        <td class="dim">${escAttr(r.shipInv) || '<span class="muted">—</span>'}</td>
+        <td class="dim">${escAttr(r.shipScm) || '<span class="muted">—</span>'}</td>
         <td class="num">${r.qtyInv==null?'<span class="muted">—</span>':fmt(r.qtyInv)}</td>
         <td class="num">${r.qtyScm==null?'<span class="muted">—</span>':fmt(r.qtyScm)}</td>
-        <td class="num">${r.diff==null?'<span class="muted">—</span>':(r.diff===0?'0':fmt(r.diff))}</td>
+        <td class="num sel${selCls}">${r.diff==null?'<span class="muted">—</span>':fmtSel(r.diff)}</td>
         <td class="muted" style="font-size:11.5px">${escAttr(r.src)}</td>
         <td><span class="tag ${s.cls}">${s.label}</span></td>
         ${caseCell}
@@ -1789,6 +1996,65 @@ function renderTable(reset){
   document.getElementById('footCount').textContent =
     `Menampilkan ${state.shown.toLocaleString('id-ID')} dari ${rows.length.toLocaleString('id-ID')} baris`;
   document.getElementById('btnMore').classList.toggle('hide', state.shown>=rows.length);
+  document.getElementById('toolCount').textContent =
+    `${rows.length.toLocaleString('id-ID')} dari ${state.rows.length.toLocaleString('id-ID')} baris`;
+  renderChips();
+  ukurKolomMenempel();
+}
+
+/* Lebar kolom PEB dipakai sebagai posisi kiri kolom Kategori yang ikut menempel saat scroll ke kanan */
+function ukurKolomMenempel(){
+  const th = document.querySelector('#hrow th');
+  if(th && th.offsetWidth) document.getElementById('tbl').style.setProperty('--c0w', th.offsetWidth + 'px');
+}
+
+/* ================= Chip filter aktif ================= */
+function chipsAktif(){
+  const out = [];
+  const q = document.getElementById('search').value.trim();
+  if(q) out.push({teks:'Cari: '+q, hapus:()=>{ document.getElementById('search').value=''; }});
+  state.filter.forEach(k=> out.push({teks:'Status: '+(STATUS[k] ? STATUS[k].label : k), hapus:()=>{ state.filter.delete(k); renderLedger(); }}));
+  Object.keys(state.colFilters).forEach(k=>{
+    const v = state.colFilters[k];
+    if(v==='' || v==null) return;
+    const lab = LABEL_FILTER_KOLOM[k] || k;
+    out.push({teks:lab+': '+(k==='status' && STATUS[v] ? STATUS[v].label : v), kolom:true, hapus:()=>{
+      state.colFilters[k] = '';
+      document.querySelectorAll('[data-key="'+k+'"].cf, [data-key="'+k+'"].cf-num, [data-key="'+k+'"].cf-sel').forEach(el=>el.value='');
+    }});
+  });
+  return out;
+}
+function renderChips(){
+  const bar = document.getElementById('chipbar'); if(!bar) return;
+  const list = chipsAktif();
+  const nKolom = list.filter(c=>c.kolom).length;
+  const btn = document.getElementById('btnColFilters');
+  if(btn) btn.textContent = nKolom ? `Filter kolom (${nKolom})` : 'Filter kolom';
+  bar.classList.toggle('on', list.length>0);
+  bar.innerHTML = '';
+  list.forEach(c=>{
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.title = 'Klik untuk menghapus filter ini';
+    b.innerHTML = escAttr(c.teks) + ' <span aria-hidden="true">×</span>';
+    b.setAttribute('aria-label', 'Hapus filter ' + c.teks);
+    b.onclick = ()=>{ c.hapus(); renderTable(true); };
+    bar.appendChild(b);
+  });
+  if(list.length>1){
+    const r = document.createElement('button');
+    r.type = 'button'; r.className = 'chip-reset'; r.textContent = 'Reset filter';
+    r.onclick = resetFilter;
+    bar.appendChild(r);
+  }
+}
+function resetFilter(){
+  document.getElementById('search').value = '';
+  state.filter = new Set();
+  Object.keys(state.colFilters).forEach(k=> state.colFilters[k]='');
+  document.querySelectorAll('.cf, .cf-num').forEach(el=> el.value='');
+  document.querySelectorAll('.cf-sel').forEach(el=> el.value='');
+  renderLedger(); renderTable(true);
 }
 
 /* ================= Ekspor ================= */
@@ -1814,6 +2080,7 @@ function deskripsiFilter(){
   });
   if(state.refDate) d.push(['Tanggal acuan', state.refDate]);
   if(state.sortKey) d.push(['Urut', (LABEL_FILTER_KOLOM[state.sortKey] || state.sortKey) + (state.sortDir==='desc' ? ' (turun)' : ' (naik)')]);
+  else d.push(['Urut', 'prioritas (perlu tindakan di atas, selisih terbesar dulu)']);
   return d;
 }
 function exportData(rows){
@@ -1983,6 +2250,45 @@ document.getElementById('tbody').addEventListener('input', e=>{
 });
 document.getElementById('btnMore').onclick = ()=>renderTable(false);
 let t; document.getElementById('search').oninput = ()=>{ clearTimeout(t); t=setTimeout(()=>renderTable(true),180); };
+document.getElementById('search').addEventListener('keydown', e=>{
+  if(e.key==='Escape' && e.target.value){ e.target.value=''; renderTable(true); }
+});
+
+/* Filter kolom dilipat secara bawaan; tombol "Filter kolom" membukanya */
+document.getElementById('btnColFilters').onclick = e=>{
+  const on = document.body.classList.toggle('col-filter-on');
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  ukurKolomMenempel();
+};
+
+/* Menu "Lainnya" */
+(function wireMenuLain(){
+  const btn = document.getElementById('btnMenuLain'), menu = document.getElementById('menuLain');
+  const tutup = ()=>{ menu.hidden = true; btn.setAttribute('aria-expanded','false'); };
+  btn.onclick = e=>{ e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute('aria-expanded', String(!menu.hidden)); };
+  menu.addEventListener('click', e=>{ if(e.target.closest('.btn')) tutup(); });
+  document.addEventListener('click', e=>{ if(!menu.hidden && !e.target.closest('.menu-wrap')) tutup(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !menu.hidden){ tutup(); btn.focus(); } });
+})();
+
+/* Langkah 1-2 dilipat setelah pengecekan; "Ganti berkas" membukanya lagi */
+function lipatUnggah(lipat){
+  const sec = document.getElementById('secUnggah'), bar = document.getElementById('unggahRingkas');
+  if(!sec || !bar) return;
+  sec.classList.toggle('lipat', !!lipat);
+  bar.hidden = !lipat;
+  if(lipat){
+    const n = state.inv.length + state.scm.length + state.inb.length + state.out.length;
+    const d = document.getElementById('runDate').textContent;
+    document.getElementById('unggahRingkasTeks').innerHTML = (n
+      ? `<b>${n} berkas</b> diproses (${state.inv.length} inventory, ${state.scm.length} SCM${state.inb.length ? `, ${state.inb.length} inbound` : ''}${state.out.length ? `, ${state.out.length} outbound` : ''})`
+      : 'Hasil dari sesi bersama') + (d && d!=='—' ? ` · dijalankan ${escAttr(d)}` : '');
+  }
+}
+document.getElementById('btnGantiBerkas').onclick = ()=>{
+  lipatUnggah(false);
+  document.getElementById('secUnggah').scrollIntoView({behavior:'smooth', block:'start'});
+};
 
 /* ================= Urutkan & saring per kolom ================= */
 /* Isi pilihan status di dropdown filter kolom, sekali saja saat halaman dimuat */
@@ -2046,6 +2352,8 @@ document.getElementById('btnReset').onclick = ()=>{
   document.getElementById('resultStep').classList.add('hide');
   document.getElementById('runRows').textContent='0';
   document.getElementById('runDate').textContent='—';
+  document.getElementById('search').value='';
+  lipatUnggah(false);
   const m=document.getElementById('statusMsg'); m.className='status-msg';
 };
 
