@@ -413,7 +413,7 @@
   // Auto-logout setelah tidak ada aktivitas selama IDLE_LIMIT_MS. Aktivitas
   // dicatat lintas tab lewat localStorage supaya tab lain yang masih dipakai
   // aktif tidak ikut ter-logout gara-gara satu tab dibiarkan diam.
-  var IDLE_LIMIT_MS = 2 * 60 * 60 * 1000; // 2 jam
+  var IDLE_LIMIT_MS = 60 * 60 * 1000; // 1 jam
   var IDLE_CHECK_MS = 30 * 1000;
   var IDLE_STORAGE_KEY = "glt-last-activity";
   var IDLE_EVENTS = ["mousemove", "mousedown", "keydown", "wheel", "touchstart", "scroll"];
@@ -451,7 +451,7 @@
     // ditimpa "sekarang" saat halaman dimuat. Browser yang menghibernasi/membuang
     // tab lama (mis. Vivaldi, Chrome Memory Saver) memuat ulang halaman begitu
     // pengguna kembali; kalau setiap pemuatan langsung mencatat "aktif sekarang",
-    // waktu idle 2 jam selalu terhapus sebelum sempat dicek. Nilai ini disimpan
+    // waktu idle 1 jam selalu terhapus sebelum sempat dicek. Nilai ini disimpan
     // (bootLast) dan dinilai sekali begitu status sesi awal diketahui.
     var bootLast = readStored();
     if (bootLast === null) { markActivity(); bootLast = Date.now(); } // kunjungan pertama
@@ -467,7 +467,7 @@
       var client = supaClient();
       if (!client) return;
       function done() {
-        shellToast("Sesi berakhir karena tidak ada aktivitas selama 2 jam. Silakan masuk kembali.");
+        shellToast("Sesi berakhir karena tidak ada aktivitas selama 1 jam. Silakan masuk kembali.");
         setTimeout(function () { location.reload(); }, 1200);
       }
       // Jalur gagal (mis. offline) tetap menuju layar login; sesi lokal dibersihkan supabase-js.
@@ -479,7 +479,7 @@
     }
 
     // Dipanggil sekali oleh fillIdentity() dengan status sesi saat halaman dimuat.
-    // Kalau sudah login DAN terakhir aktif >= 2 jam lalu (sebelum halaman ini
+    // Kalau sudah login DAN terakhir aktif >= 1 jam lalu (sebelum halaman ini
     // dimuat), langsung keluar -- tanpa peduli gerakan mouse setelahnya.
     onInitialSession = function (user) {
       if (user && Date.now() - bootLast >= IDLE_LIMIT_MS) logoutIdle();
