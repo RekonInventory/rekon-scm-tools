@@ -14,6 +14,15 @@ import { log } from "../core/logger.js";
 
 export const SESSION_STALE_MS = 2 * 60 * 1000;   // sama dengan versi lama & aturan server
 const HEARTBEAT_MS = 45 * 1000;
+// Sesi yang owner-nya tidak aktif selama ini dianggap SUDAH BERAKHIR: tidak ditawarkan lagi ke pengguna lain
+// (dan ditutup otomatis). Heartbeat hanya dikirim bila pengguna benar-benar aktif dalam jendela di bawah ini
+// (aktivitas dicatat shell di localStorage), supaya tab yang ditinggalkan terbuka tidak menjaga sesi tetap "hidup".
+export const SESSION_EXPIRE_MS = 30 * 60 * 1000;
+const ACTIVITY_WINDOW_MS = 15 * 60 * 1000;
+function userAktifBaru() {
+  try { const t = Number(localStorage.getItem("glt-last-activity")); return !t || (Date.now() - t) < ACTIVITY_WINDOW_MS; }
+  catch (e) { return true; }
+}
 const LAST_JOIN_KEY = "rekon_inbound_last_session_id";   // cache saja (bukan sumber kebenaran)
 
 function remember(id) { try { if (id) localStorage.setItem(LAST_JOIN_KEY, id); else localStorage.removeItem(LAST_JOIN_KEY); } catch (e) { /* mode privat */ } }
@@ -52,7 +61,7 @@ export function createSessionService(deps) {
   function startHeartbeat() {
     stopHeartbeat();
     heartbeat = setInterval(async () => {
-      if (!current || role !== "OWNER") return;
+      if (!current || role !== "OWNER" || !userAktifBaru()) return;
       try { await SessionRepository.touch(current.id, { last_activity_at: new Date().toISOString() }); }
       catch (e) { log.warn("session:heartbeat-failed", { message: e && e.message }); }
     }, HEARTBEAT_MS);
@@ -109,6 +118,12 @@ export function createSessionService(deps) {
       const s = await SessionRepository.getActive();
       if (!s) return { action: "none" };
       if (s.owner_id === identity().user_id) { attach(s, "OWNER"); return { action: "reclaimed", session: s }; }
+      // owner sudah lama tidak aktif (mis. sudah logout): sesi dianggap berakhir -> tutup diam-diam, jangan ditawarkan
+      if ((Date.now() - new Date(s.last_activity_at).getTime()) > SESSION_EXPIRE_MS) {
+        try { await SessionRepository.close(s.id); } catch (e) { log.warn("session:expire-close-failed", { message: e && e.message }); }
+        remember(null);
+        return { action: "none", expired: s };
+      }
       if (remembered() === s.id) { attach(s, "FOLLOWER"); return { action: "rejoined", session: s }; }
       return { action: "found", session: s };
     },

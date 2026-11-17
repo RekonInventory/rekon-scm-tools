@@ -27,6 +27,11 @@
   "use strict";
   const WS = "default", TABLE = "inbound_sessions", BUCKET = "inbound-snapshots";
   const STALE_MS = 2 * 60 * 1000, HEARTBEAT_MS = 45 * 1000, INLINE_LIMIT = 3 * 1024 * 1024, VIEW_POLL_MS = 900;
+  /* Sesi yang owner-nya tidak aktif selama EXPIRE_MS dianggap SUDAH BERAKHIR: tidak ditawarkan lagi ke pengguna
+     lain (ditutup otomatis). Heartbeat hanya dikirim bila pengguna benar-benar aktif dalam ACTIVITY_WINDOW_MS
+     (aktivitas dicatat shell di localStorage), supaya tab yang ditinggalkan terbuka tidak menjaga sesi tetap "hidup". */
+  const EXPIRE_MS = 30 * 60 * 1000, ACTIVITY_WINDOW_MS = 15 * 60 * 1000;
+  const userAktifBaru = () => { try{ const t = Number(localStorage.getItem("glt-last-activity")); return !t || (Date.now() - t) < ACTIVITY_WINDOW_MS; }catch(e){ return true; } };
   const esc = s => String(s === null || s === undefined ? "" : s)
     .replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const fmtWaktu = iso => { if(!iso) return "-"; const d = new Date(iso); return isNaN(d) ? String(iso) : d.toLocaleString("id-ID", {dateStyle:"medium", timeStyle:"short"}); };
@@ -201,7 +206,7 @@
     function mulaiTimer(){
       clearInterval(heartbeat); clearInterval(pollTimer);
       heartbeat = setInterval(() => {
-        if(current && role === "OWNER") Repo.sentuh(current.id, {last_activity_at:new Date().toISOString()}).catch(() => {});
+        if(current && role === "OWNER" && userAktifBaru()) Repo.sentuh(current.id, {last_activity_at:new Date().toISOString()}).catch(() => {});
       }, HEARTBEAT_MS);
       // owner: siarkan tampilan bila berubah (tab, saringan, urutan, laci) — tanpa perlu mengait tiap tombol
       pollTimer = cfg.tampilan ? setInterval(() => {
@@ -382,6 +387,12 @@
       if(s.owner_id === user.id){
         pasang(s, "OWNER");
         if(!(cfg.adaHasil && cfg.adaHasil())){ try{ await terapkanSnapshot(s); }catch(e){ if(!e.kosong) toast("Gagal memuat hasil sesi: " + pesanGalat(e), "err"); } }
+        return;
+      }
+      if((Date.now() - new Date(s.last_activity_at).getTime()) > EXPIRE_MS){
+        // owner sudah lama tidak aktif (mis. sudah logout): sesi dianggap berakhir -> tutup diam-diam, jangan ditawarkan
+        try{ await Repo.tutup(s.id); }catch(e){ console.warn("sesi bersama: gagal menutup sesi kedaluwarsa", e); }
+        ingat(null);
         return;
       }
       if(diingat() === s.id){ await ikuti(s); return; }
