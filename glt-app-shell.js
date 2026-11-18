@@ -375,7 +375,7 @@
       // Hanya menentukan tampil/tidaknya menu. app_metadata.role diisi server (tidak bisa
       // diubah user); user_metadata.is_admin dipertahankan sebagai cadangan tampilan
       // selama migrasi role belum dijalankan. Otorisasi nyata: Edge Function + RLS.
-      var isAdmin = !!((user.app_metadata && user.app_metadata.role === "admin") ||
+      var isAdmin = !!((user.app_metadata && (user.app_metadata.role === "admin" || user.app_metadata.role === "supervisor")) ||
                        (user.user_metadata && user.user_metadata.is_admin === true));
       if (adminGroup) adminGroup.hidden = !isAdmin;
     }

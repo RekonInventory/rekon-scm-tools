@@ -284,11 +284,13 @@ async function callAdmin(action, payload){
 // kelola sesi), admin (+ kelola pengguna & hapus permanen). Ditegakkan di server
 // (RLS/RPC + Edge Function); pilihan di sini hanya memanggil Edge Function.
 const ROLE_LABEL = { operator: "Operator", supervisor: "Supervisor", admin: "Admin" };
+let myRole = null;
 function roleSelectHtml(u){
   const role = u.role || (u.is_admin ? "admin" : "operator");
   const self = currentUser && u.id === currentUser.id;
+  const notAdmin = myRole === "supervisor";
   return '<select class="role-select" data-role-for="' + esc(u.id) + '" aria-label="Role ' + esc(u.username) + '"' +
-    (self ? ' disabled title="Role akun sendiri tidak bisa diubah dari sini"' : '') + '>' +
+    (notAdmin ? ' disabled title="Hanya admin yang bisa mengubah role"' : (self ? ' disabled title="Role akun sendiri tidak bisa diubah dari sini"' : '')) + '>' +
     Object.keys(ROLE_LABEL).map(r => '<option value="' + r + '"' + (r === role ? " selected" : "") + '>' + ROLE_LABEL[r] + '</option>').join("") +
     '</select>';
 }
@@ -308,9 +310,10 @@ async function loadUsers(){
       "<td>" + esc(fmtStamp(u.created_at)) + "</td>" +
       "<td>" + esc(fmtStamp(u.last_sign_in_at)) + "</td>" +
       '<td class="actions">' +
+        ((myRole === "supervisor" && u.role === "admin" && u.id !== currentUser.id) ? '<span style="font-size:11.5px;color:var(--muted,#667);">Hanya admin</span>' : (
         '<button class="btn ghost" data-act="reset" style="padding:5px 9px;font-size:11.5px;">Reset sandi</button>' +
-        '<button class="btn ghost" data-act="rename" style="padding:5px 9px;font-size:11.5px;">Ganti nama</button>' +
-        (u.id === currentUser.id ? "" : (
+        '<button class="btn ghost" data-act="rename" style="padding:5px 9px;font-size:11.5px;">Ganti nama</button>')) +
+        ((u.id === currentUser.id || myRole === "supervisor") ? "" : (
           (u.banned
             ? '<button class="btn ghost" data-act="unban" style="padding:5px 9px;font-size:11.5px;">Buka blokir</button>'
             : '<button class="btn ghost" data-act="ban" style="padding:5px 9px;font-size:11.5px;color:var(--red);">Blokir</button>') +
@@ -400,7 +403,8 @@ async function refreshAuthUI(session){
     // otorisasi sesungguhnya dilakukan Edge Function admin-users.
     let isAdmin = false;
     const rpc = await supa.rpc("app_my_role");
-    if(!rpc.error) isAdmin = rpc.data === "admin";
+    myRole = rpc.error ? null : rpc.data;
+    if(!rpc.error) isAdmin = rpc.data === "admin" || rpc.data === "supervisor";
     else isAdmin = !!((user.app_metadata && user.app_metadata.role === "admin") || (user.user_metadata && user.user_metadata.is_admin === true));
     document.getElementById("whoAmI").textContent = displayNameFromUser(user);
     document.getElementById("notAdminBox").style.display = isAdmin ? "none" : "block";
