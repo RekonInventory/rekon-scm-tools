@@ -106,7 +106,7 @@ export function mountImportWorkspace(root, app) {
     const it = items.find((x) => x.kind === kind && x.summary);
     return h("section", { class: "ib-slot", "aria-label": "Slot " + KIND_LABEL[kind] },
       h("h3", { class: "ib-slot-title" }, KIND_LABEL[kind], kind === "scm" ? h("span", { class: "ib-req" }, "wajib") : h("span", { class: "ib-opt" }, "pembanding")),
-      it ? fileCard(it, disabled) : h("div", { class: "ib-slot-empty" }, icon("file", 18), h("div", null, h("b", null, "Belum ada berkas"), h("p", null, SLOT_HINT[kind]))));
+      it ? fileCard(it, disabled) : h("div", { class: "ib-slot-empty" }, icon("file", 18), h("div", null, h("b", null, "Belum ada berkas"))));
   }
 
   function stepper(items, gate, running, hasResult) {
@@ -150,13 +150,12 @@ export function mountImportWorkspace(root, app) {
       h("div", { class: "gs-card-head" },
         h("div", null,
           h("h2", { class: "gs-card-title", id: "ibImportTitle" }, "Import workspace"),
-          h("p", { class: "gs-card-sub" }, isCollapsed ? (readyCount + " berkas terpakai pada hasil saat ini") : "Upload SCM, IOR (Adidas), dan DRR (Nike) — jenis berkas dideteksi otomatis dari isi sheet.")),
+          isCollapsed ? h("p", { class: "gs-card-sub" }, readyCount + " berkas terpakai pada hasil saat ini") : null),
         h("div", { class: "gs-spacer" }),
         collapsible ? h("button", { type: "button", class: "gs-btn gs-btn--sm gs-btn--ghost", "aria-expanded": String(!isCollapsed), "aria-controls": bodyId,
           onClick: () => { collapsed = !collapsed; render(); } }, icon(isCollapsed ? "chevronDown" : "chevronUp", 14), isCollapsed ? "Tampilkan berkas" : "Ringkas") : null,
         items.length && !follower ? button("Kosongkan", { size: "sm", variant: "ghost", icon: "trash", attrs: { disabled: anyBusy || running }, onClick: actions.resetFiles }) : null),
       h("div", { class: "gs-card-body ib-import-body", id: bodyId, hidden: isCollapsed },
-        stepper(items, gate, running, hasResult),
         follower ? h("div", { class: "ib-inline-alert is-info", role: "status" }, icon("info"),
           "Anda sedang mengikuti sesi bersama — data disinkron dari owner, tidak perlu upload ulang. Berhenti mengikuti untuk mengunggah berkas sendiri.") : null,
         h("div", { class: ["gs-dropzone", "ib-dropzone", follower ? "is-disabled" : null], dataset: { drop: "1" },
@@ -166,7 +165,7 @@ export function mountImportWorkspace(root, app) {
           h("div", { class: "gs-dropzone-title" }, "Tarik & lepas berkas Excel di sini, atau ",
             h("label", { for: inputId, class: "ib-linkbtn ib-file-trigger", tabindex: follower ? "-1" : "0", role: "button", "aria-disabled": follower ? "true" : null,
               onKeydown: (e) => { if ((e.key === "Enter" || e.key === " ") && !follower) { e.preventDefault(); fileInput.click(); } } }, "pilih berkas")),
-          h("div", { class: "gs-dropzone-hint" }, ".xlsx / .xlsm / .xls — boleh beberapa berkas sekaligus. Berkas diproses di browser Anda; isinya tidak disimpan ke database.")),
+          h("div", { class: "gs-dropzone-hint" }, "SCM, IOR (Adidas), DRR (Nike) — boleh sekaligus, jenis dikenali otomatis.")),
         h("div", { class: "ib-slots" }, ["scm", "ior", "nike"].map((k) => slot(k, items, follower || running))),
         extra.length ? h("section", { class: "ib-extra", "aria-label": "Berkas yang perlu tindakan" },
           h("h3", { class: "ib-slot-title" }, "Perlu tindakan"),

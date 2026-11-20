@@ -50,15 +50,13 @@ export function mountHeader(root, app) {
     replace(root,
       h("div", { class: "ib-header-main" },
         h("div", { class: "ib-header-titles" },
-          h("nav", { class: "gs-crumbs", "aria-label": "Breadcrumb" }, h("span", null, "Operasional"), h("span", { "aria-hidden": "true" }, "/"), h("span", null, "Inbound")),
-          h("h1", { class: "gs-page-title", id: "ibPageTitle" }, "Inbound Reconciliation"),
-          h("p", { class: "gs-page-desc" }, "SCM ↔ IOR (Adidas) · SCM ↔ DRR (Nike) — per NOPEN, dua arah, dengan penelusuran histori.")),
+
+          h("h1", { class: "gs-page-title", id: "ibPageTitle" }, "Inbound Reconciliation")),
         h("div", { class: "gs-page-actions" }, exportBtn, more)),
       h("div", { class: "ib-header-meta", role: "group", "aria-label": "Konteks kerja" },
         meta("Periode", r && r.periodKey ? periodLabel(r.periodKey) : "Belum ada rekonsiliasi", "clock"),
         meta("Sesi", sessText, "broadcast", sess.row ? (sess.connection === "connected" ? "ok" : "warn") : null),
-        meta("Case", syncText, "database", sync.state === "error" ? "err" : (sync.state === "synced" ? "ok" : null)),
-        meta("Role", ROLE_LABEL[role] || role, "shield"),
+        sync.state === "error" ? meta("Case", syncText, "database", "err") : null,
         r ? meta("Dibuat", C.fmtStamp(new Date(r.generated).toISOString()), "user") : null));
   }
 

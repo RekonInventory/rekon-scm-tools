@@ -55,7 +55,7 @@ export function mountSummary(root, app) {
       replace(root, h("div", { class: "gs-empty ib-empty-hero" },
         h("div", { class: "gs-empty-icon" }, icon("layers", 18)),
         h("p", { class: "gs-empty-title" }, "Belum ada hasil rekonsiliasi"),
-        h("p", { class: "gs-empty-desc" }, s.session && s.session.role === "FOLLOWER" ? "Menunggu owner sesi menjalankan rekonsiliasi…" : "Muat berkas di Import workspace lalu jalankan rekonsiliasi. Ringkasan dan tabel temuan akan muncul di sini.")));
+        h("p", { class: "gs-empty-desc" }, s.session && s.session.role === "FOLLOWER" ? "Menunggu owner sesi menjalankan rekonsiliasi…" : "Muat berkas lalu jalankan rekonsiliasi.")));
       return;
     }
     const view = s.view;
