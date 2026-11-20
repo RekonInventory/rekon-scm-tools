@@ -182,6 +182,19 @@ td.actions{gap:6px;align-items:center}
       </table>
       <div class="msg" id="listMsg"></div>
     </div>
+
+    <div class="panel">
+      <h2>Bersihkan Storage sesi lama</h2>
+      <p class="sub" style="margin:0 0 14px">
+        Setiap sesi bersama (Outbound/Inventory/Inbound) yang DITUTUP meninggalkan berkas
+        snapshot dan file sumber asli di Storage — berkas itu tidak pernah terhapus sendiri,
+        jadi menumpuk seiring waktu. Tombol ini menghapus berkas milik sesi yang <b>sudah
+        ditutup</b> saja; sesi yang masih aktif, serta case/riwayat/audit di database, tidak
+        tersentuh. Jalankan ini sesekali (mis. tiap bulan) supaya Storage tidak melebihi kuota.
+      </p>
+      <button class="btn ghost" id="btnBersihkanStorage" type="button">Bersihkan Storage sesi lama</button>
+      <div class="msg" id="storageMsg"></div>
+    </div>
   </div>
 </div>
 
@@ -392,6 +405,76 @@ document.getElementById("createForm").addEventListener("submit", async (e)=>{
 });
 
 document.getElementById("btnReload").addEventListener("click", loadUsers);
+
+/* ---- Bersihkan Storage sesi lama ----
+   Akar masalah: inbound_session_close() hanya mengubah status, tidak pernah menghapus
+   berkas Storage (snapshot_path, source_files) milik sesi itu. Supabase MELARANG
+   "delete from storage.objects" lewat SQL (storage.protect_delete()), jadi pembersihan
+   harus lewat Storage API seperti ini. Kebijakan delete bucket inbound-snapshots sudah
+   mengizinkan role supervisor+admin (lihat docs/sql/inbound_2026-09-30_01_platform.sql). */
+const STORAGE_BUCKET = "inbound-snapshots";
+async function calonHapusStorage(){
+  const { data, error } = await supa.from("inbound_sessions")
+    .select("id,snapshot_path,result_path,source_files")
+    .eq("status", "CLOSED")
+    .or("snapshot_path.not.is.null,source_files.not.is.null");
+  if(error) throw error;
+  return data || [];
+}
+function kumpulkanPathStorage(rows){
+  const set = new Set();
+  rows.forEach(r=>{
+    if(r.snapshot_path) set.add(r.snapshot_path);
+    if(r.result_path) set.add(r.result_path);
+    if(r.source_files && typeof r.source_files === "object"){
+      Object.values(r.source_files).forEach(v=>{ if(v && v.path) set.add(v.path); });
+    }
+  });
+  return [...set];
+}
+async function bersihkanStorage(){
+  const btn = document.getElementById("btnBersihkanStorage");
+  const msg = document.getElementById("storageMsg");
+  msg.className = "msg"; msg.textContent = "Memeriksa sesi yang sudah ditutup…";
+  btn.disabled = true;
+  let rows;
+  try{ rows = await calonHapusStorage(); }
+  catch(e){ btn.disabled = false; msg.className = "msg err"; msg.textContent = "Gagal memeriksa: " + e.message; return; }
+  if(!rows.length){ btn.disabled = false; msg.className = "msg ok"; msg.textContent = "Tidak ada berkas sesi lama yang perlu dibersihkan. Storage sudah bersih."; return; }
+  const paths = kumpulkanPathStorage(rows);
+  const ok = await gltConfirm(
+    "Hapus " + paths.length + " berkas Storage milik " + rows.length + " sesi yang sudah ditutup?\n\n" +
+    "Sesi yang masih aktif, serta case/riwayat/audit di database, tidak tersentuh.",
+    {okLabel: "Hapus " + paths.length + " berkas"}
+  );
+  if(!ok){ btn.disabled = false; msg.textContent = ""; return; }
+  msg.textContent = "Menghapus " + paths.length + " berkas…";
+  let dihapus = 0;
+  for(let i = 0; i < paths.length; i += 100){
+    const chunk = paths.slice(i, i + 100);
+    const { data, error } = await supa.storage.from(STORAGE_BUCKET).remove(chunk);
+    if(error){
+      btn.disabled = false;
+      msg.className = "msg err";
+      msg.textContent = dihapus + " berkas terhapus, lalu gagal: " + error.message + " (pastikan role Anda admin/supervisor).";
+      return;
+    }
+    dihapus += (data || chunk).length;
+  }
+  const { error: upErr } = await supa.from("inbound_sessions")
+    .update({ snapshot_path: null, result_path: null, source_files: null })
+    .in("id", rows.map(r => r.id));
+  btn.disabled = false;
+  if(upErr){
+    msg.className = "msg err";
+    msg.textContent = dihapus + " berkas terhapus, tapi gagal membersihkan rujukan di database: " + upErr.message;
+    return;
+  }
+  msg.className = "msg ok";
+  msg.textContent = dihapus + " berkas dihapus dari " + rows.length + " sesi lama.";
+  gltToast("Storage dibersihkan: " + dihapus + " berkas dari " + rows.length + " sesi lama.", "ok");
+}
+document.getElementById("btnBersihkanStorage").addEventListener("click", bersihkanStorage);
 
 async function refreshAuthUI(session){
   const user = session && session.user ? session.user : null;

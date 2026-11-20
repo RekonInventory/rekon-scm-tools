@@ -60,8 +60,8 @@
     return decodeURIComponent(rel).toLowerCase();
   }
 
-  function activeNavId() {
-    var file = currentFile();
+  // id modul untuk path relatif (mis. "outbound.html"); null bila bukan halaman modul.
+  function navIdForFile(file) {
     var all = NAV.concat(ADMIN_NAV);
     for (var i = 0; i < all.length; i++) {
       var names = [all[i].href.toLowerCase()].concat(all[i].alias || []);
@@ -69,7 +69,21 @@
         if (names[j] === file || (names[j].slice(-1) === "/" && file.indexOf(names[j]) === 0)) return all[i].id;
       }
     }
-    return "dashboard";
+    return null;
+  }
+
+  function activeNavId() {
+    return navIdForFile(currentFile()) || "dashboard";
+  }
+
+  // id modul tujuan sebuah link (href absolut); null bila link bukan ke halaman modul suite ini.
+  function navIdForHref(href) {
+    var url = String(href || "").split(/[?#]/)[0];
+    if (!BASE || url.indexOf(BASE) !== 0) return null;
+    var rel = url.slice(BASE.length);
+    if (!rel || rel.charAt(rel.length - 1) === "/") rel += "index.html";
+    try { rel = decodeURIComponent(rel); } catch (e) { /* biarkan */ }
+    return navIdForFile(rel.toLowerCase());
   }
 
   function supaClient() {
@@ -501,6 +515,62 @@
     setInterval(checkIdle, IDLE_CHECK_MS);
   }
 
+  // ---------------------------------------------------------------------------
+  // Beberapa rekon sekaligus dalam satu login: tiap modul punya tab browser
+  // sendiri (nama jendela "glt-<modul>"). Klik menu/link ke modul LAIN tidak
+  // meninggalkan halaman ini (hasil rekon di sini tetap utuh) — tab modul itu
+  // dibuka, atau difokuskan TANPA dimuat ulang bila sudah terbuka. Klik ke modul
+  // yang sama, Ctrl/Shift/klik tengah, dan link ber-target tetap perilaku biasa.
+  // Login dipakai bersama semua tab (Supabase menyimpan sesi di localStorage).
+  // ---------------------------------------------------------------------------
+  // Notifikasi ringkas (kelas .glt-toast dari glt-design-system.css), tanpa bergantung
+  // pada gltToast milik halaman — tidak semua halaman (mis. Inbound v3, Dashboard) punya.
+  function shellToast(text) {
+    var wrap = document.getElementById("gltToastWrap");
+    if (!wrap) { wrap = document.createElement("div"); wrap.id = "gltToastWrap"; wrap.className = "glt-toast-wrap"; document.body.appendChild(wrap); }
+    var el = document.createElement("div"); el.className = "glt-toast warn"; el.setAttribute("role", "status");
+    var msg = document.createElement("div"); msg.className = "glt-toast-msg"; msg.textContent = text;
+    var x = document.createElement("span"); x.className = "glt-toast-x"; x.textContent = "×";
+    x.addEventListener("click", function () { el.remove(); });
+    el.appendChild(msg); el.appendChild(x); wrap.appendChild(el);
+    setTimeout(function () { el.remove(); }, 9000);
+  }
+
+  function bukaTabModul(id, href) {
+    var w = null;
+    try { w = window.open("", "glt-" + id); } catch (e) { w = null; }
+    if (!w) {
+      // Pop-up diblokir browser. Jangan pindah halaman diam-diam (hasil rekon di tab
+      // ini bisa hilang): beri tahu pengguna. Tanpa komponen toast, navigasi biasa.
+      shellToast("Browser memblokir tab baru. Izinkan pop-up untuk situs ini, atau Ctrl+klik menu untuk membukanya di tab baru.");
+      return;
+    }
+    try {
+      // Tab baru masih kosong -> arahkan ke modul. Tab lama berisi modul -> cukup fokus.
+      var kosong = !w.location || w.location.href === "about:blank" || w.location.href === "";
+      if (kosong) w.location.href = href;
+    } catch (e) {
+      try { w.location.href = href; } catch (e2) { /* abaikan */ }
+    }
+    try { w.focus(); } catch (e) { /* abaikan */ }
+  }
+
+  function setupModuleTabs() {
+    var here = activeNavId();
+    try { if (!window.name || window.name.indexOf("glt-") === 0) window.name = "glt-" + here; } catch (e) { /* abaikan */ }
+    document.addEventListener("click", function (e) {
+      if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+      if (!a || (a.getAttribute("target") && a.getAttribute("target") !== "_self") || a.hasAttribute("download")) return;
+      var raw = a.getAttribute("href") || "";
+      if (!raw || raw.charAt(0) === "#" || /^(javascript|mailto|tel):/i.test(raw)) return;
+      var id = navIdForHref(a.href);
+      if (!id || id === here) return;
+      e.preventDefault();
+      bukaTabModul(id, a.href);
+    }, true);
+  }
+
   function init() {
     if (document.querySelector(".shell-topbar")) return;
 
@@ -513,6 +583,7 @@
     setupAuthGate();
     setupCollapse();
     setupDrawer();
+    setupModuleTabs();
     setupUserMenu();
     setupIdleLogout(); // harus sebelum fillIdentity(): memasang hook sesi awal yang dipanggil fillIdentity()
     fillIdentity();

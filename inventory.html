@@ -316,6 +316,15 @@ body:not(.inv-case-mode) .col-case{display:none}   /* kolom Case hanya tampil di
 .fcard .also{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--border)}
 .fcard .also label{font-size:11.5px;font-weight:600;color:var(--text-muted);white-space:nowrap}
 .fcard .also select{max-width:260px}
+/* daftar berkas ringkas (seperti Outbound): satu baris per file */
+.fcard{padding:8px 12px;margin-top:6px}
+.fcard-name{flex:1;min-width:0}
+.fcard .frole{width:auto;max-width:250px;flex-shrink:0;font-weight:600}
+.fcard.unk .frole{border-color:var(--warning,#D97706)}
+.flink{background:none;border:none;color:var(--primary);font:inherit;font-size:12px;cursor:pointer;padding:2px 4px;white-space:nowrap;flex-shrink:0}
+.flink:hover{text-decoration:underline}
+.fdetail[hidden]{display:none}
+@media (max-width:640px){.fcard-top{flex-wrap:wrap}.fcard .frole{max-width:100%;flex:1}}
 
 /* --- Form --- */
 select,input[type=text],input[type=number]{
@@ -475,6 +484,13 @@ tbody tr:hover{background:var(--surface-muted)}
 .menu-more .btn:hover{background:var(--surface-muted)}
 .menu-more .mh{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);padding:8px 10px 3px}
 .menu-more .mh:first-child{padding-top:4px}
+.menu-kolom{left:0;right:auto;min-width:240px;max-height:60vh;overflow:auto}
+.menu-kolom label{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:13px;cursor:pointer;border-radius:var(--gs-radius)}
+.menu-kolom label:hover{background:var(--surface-muted)}
+.menu-kolom label.kunci{color:var(--text-muted);cursor:default}
+.menu-kolom input{width:auto;margin:0}
+.menu-kolom .mk-foot{display:flex;gap:6px;border-top:1px solid var(--border);margin-top:4px;padding-top:6px}
+.menu-kolom .mk-foot .btn{width:auto;flex:1;text-align:center}
 #btnColFilters[aria-pressed=true]{background:var(--primary-soft);border-color:var(--primary);color:var(--primary-dark)}
 
 /* Chip filter aktif */
@@ -602,7 +618,7 @@ td.casecell{min-width:120px}
       <div class="drop-label">Satu kolom untuk semua file</div>
       <div class="drop-title">Tarik &amp; lepas semua file di sini, atau klik untuk memilih</div>
       <div class="drop-desc">Masukkan sekaligus: <b>Inventory</b> (boleh Adidas dan Nike), <b>laporan SCM</b>, dan bila ada <b>Inbound SCM</b> (tanggal GRN)
-        serta <b>Outbound SCM</b> (tanggal keluar). Jenis tiap file dikenali otomatis dari nama kolomnya dan bisa diubah di kartu file.</div>
+        serta <b>Outbound SCM</b> (tanggal keluar). Jenis tiap file dikenali otomatis dari isi dan namanya; ubah lewat pilihan di sebelah nama file bila salah.</div>
       <input type="file" id="fileAll" multiple accept=".xlsx,.xls,.csv">
     </div>
     <div class="rolebar" id="roleBar"></div>
@@ -614,7 +630,7 @@ td.casecell{min-width:120px}
     <div class="step-head">
       <span class="step-no">Langkah 2</span>
       <span class="step-title">Jalankan pengecekan</span>
-      <span class="step-hint">Kolom terisi otomatis; ubah di kartu file bila salah</span>
+      <span class="step-hint">Kolom dibaca otomatis; klik "Atur kolom" pada file bila perlu</span>
     </div>
     <div class="runbar">
       <button class="btn btn-main" id="btnRun" disabled>Jalankan pengecekan</button>
@@ -658,6 +674,10 @@ td.casecell{min-width:120px}
       <div class="tools">
         <input type="text" id="search" placeholder="Cari PEB, AJU, job, atau shipper…" aria-label="Cari baris hasil">
         <button class="btn btn-ghost btn-sm" id="btnColFilters" type="button" aria-pressed="false" title="Tampilkan atau sembunyikan kotak filter di tiap kolom">Filter kolom</button>
+        <div class="menu-wrap" id="wrapKolom">
+          <button class="btn btn-ghost btn-sm" id="btnKolom" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="menuKolom" title="Pilih kolom yang ditampilkan di tabel">Kolom ▾</button>
+          <div class="menu-more menu-kolom" id="menuKolom" hidden role="group" aria-label="Tampilkan kolom"></div>
+        </div>
         <span class="count" id="toolCount"></span>
         <span id="caseSummary"></span>
         <span class="tools-spacer"></span>
@@ -687,6 +707,7 @@ td.casecell{min-width:120px}
         <table id="tbl">
           <thead>
             <tr class="hrow" id="hrow">
+              <th data-key="status">Status<i class="sarr"></i></th>
               <th data-key="peb">PEB<i class="sarr"></i></th>
               <th data-key="category">Kategori<i class="sarr"></i></th>
               <th data-key="aju">No. AJU<i class="sarr"></i></th>
@@ -700,11 +721,15 @@ td.casecell{min-width:120px}
               <th data-key="qtyScm">Qty SCM<i class="sarr"></i></th>
               <th data-key="diff">Selisih<i class="sarr"></i></th>
               <th data-key="src">Sumber<i class="sarr"></i></th>
-              <th data-key="status">Status<i class="sarr"></i></th>
               <th data-key="case" class="col-case">Case<i class="sarr"></i></th>
               <th data-key="notes">Catatan<i class="sarr"></i></th>
             </tr>
             <tr class="frow">
+              <th>
+                <select class="cf-sel" data-key="status" id="cfStatus">
+                  <option value="">Semua</option>
+                </select>
+              </th>
               <th><input type="text" class="cf" data-key="peb" placeholder="Filter…"></th>
               <th>
                 <select class="cf-sel" data-key="category">
@@ -731,11 +756,6 @@ td.casecell{min-width:120px}
                 <input type="number" class="cf-num" data-key="diffMax" placeholder="maks">
               </th>
               <th><input type="text" class="cf" data-key="src" placeholder="Filter…"></th>
-              <th>
-                <select class="cf-sel" data-key="status" id="cfStatus">
-                  <option value="">Semua</option>
-                </select>
-              </th>
               <th class="col-case">
                 <select class="cf-sel" data-key="case">
                   <option value="">Semua</option>
@@ -1315,6 +1335,11 @@ function detectSide(a, fileName, sheetNames){
   const hasExBc = pickCol(a.headers, EXBC_HINTS) >= 0;
   /* 1. laporan outbound: punya tanggal keluar (GI Date / Tgl Keluar) atau kolom EX BC33 */
   if(hasPeb && (a.out>=0 || hasExBc)) return 'out';
+  /* 1b. laporan inbound bernama "Inbound"/"GRN": punya job + AJU + NOPEN seperti laporan SCM,
+     jadi tanpa aturan ini ikut terbaca sebagai SCM dan ±100 ribu barisnya dibandingkan dengan
+     Inventory. Nama file menentukan karena kolomnya memang mirip. */
+  const nmFile = norm(fileName);
+  if(a.job>=0 && a.arr>=0 && /inbound|inbond|\bgrn\b/.test(nmFile) && !/outbound|outbond/.test(nmFile)) return 'inb';
   /* 2. laporan SCM: nomor job + nomor AJU di samping PEB */
   if(hasPeb && a.job>=0 && a.aju>=0) return 'scm';
   /* 3. laporan inbound: nomor job + tanggal GRN tanpa AJU */
@@ -1396,23 +1421,29 @@ function renderCards(){
       SIDES.map(s=>`<option value="${s}" ${s===side?'selected':''}>${escAttr(SIDE_TITLE[s])}</option>`).join('');
     const alsoOpts = SIDES.filter(s=> s!==side && !state[s].some(x=>x.key===f.key))
       .map(s=>`<option value="${s}">${escAttr(SIDE_TITLE[s])}</option>`).join('');
+    /* Tampilan ringkas seperti Outbound: satu baris per file (nama · jenis · jumlah baris).
+       Pemetaan kolom tetap ada, tapi disembunyikan di balik "Atur kolom" (jarang perlu). */
     d.innerHTML = `
       <div class="fcard-top">
-        <div>
+        <div class="fcard-name">
           <div class="fname">${escAttr(f.name)}</div>
-          <div class="fmeta">${f.dataRows.toLocaleString('id-ID')} baris data · header di baris ${f.hIdx+1}</div>
+          <div class="fmeta">${f.dataRows.toLocaleString('id-ID')} baris · sheet ${escAttr(f.sheet)}</div>
         </div>
-        <button class="x" title="Hapus">&times;</button>
+        <select class="frole" data-k="role" aria-label="Jenis file ${escAttr(f.name)}">${roleOpts}</select>
+        <button type="button" class="flink" data-t="atur" aria-expanded="${f._atur ? 'true' : 'false'}">${f._atur ? 'Tutup' : 'Atur kolom'}</button>
+        <button class="x" title="Hapus" aria-label="Hapus ${escAttr(f.name)}">&times;</button>
       </div>
-      ${side ? '' : '<div class="warnline">Jenis file ini belum bisa dikenali dari nama kolomnya. Pilih jenisnya dulu supaya bisa dipakai.</div>'}
-      ${warn}
-      <div class="maps">
-        <div class="mfield role"><label>Jenis file</label><select data-k="role">${roleOpts}</select></div>
-        <div class="mfield"><label>Sheet</label><select data-k="sheet">${opts}</select></div>
-        ${maps}
-      </div>
-      ${side && alsoOpts ? `<div class="also"><label>Pakai juga sebagai</label><select data-k="also"><option value="">—</option>${alsoOpts}</select></div>` : ''}`;
+      ${side ? '' : '<div class="warnline">Jenis file ini belum bisa dikenali dari nama kolomnya. Pilih jenisnya di sebelah kanan supaya bisa dipakai.</div>'}
+      <div class="fdetail"${f._atur ? '' : ' hidden'}>
+        ${warn}
+        <div class="maps">
+          <div class="mfield"><label>Sheet</label><select data-k="sheet">${opts}</select></div>
+          ${maps}
+        </div>
+        ${side && alsoOpts ? `<div class="also"><label>Pakai juga sebagai</label><select data-k="also"><option value="">—</option>${alsoOpts}</select></div>` : ''}
+      </div>`;
     d.querySelector('.x').onclick = ()=>{ removeEntry(f); renderCards(); updateRun(); };
+    d.querySelector('[data-t="atur"]').onclick = ()=>{ f._atur = !f._atur; renderCards(); };
     d.querySelectorAll('select').forEach(sel=>{
       sel.onchange = ()=>{
         const k = sel.dataset.k;
@@ -1972,6 +2003,7 @@ function renderTable(reset){
         : `<td><input type="text" class="noteinput" data-peb="${escAttr(r.peb)}"
               value="${escAttr(state.notes.get(r.peb)||'')}" placeholder="Tambah catatan…"></td>`;
       tr.innerHTML = `
+        <td><span class="tag ${s.cls}">${s.label}</span></td>
         <td class="mono">${escAttr(r.peb)}</td>
         <td>${r.category ? `<span class="tag ${r.category==='Nike'?'t-cat-nike':'t-cat-adidas'}">${escAttr(r.category)}</span>` : '<span class="muted">—</span>'}</td>
         <td class="mono aju" title="${escAttr(r.aju)}">${escAttr(r.aju) || '<span class="muted">—</span>'}</td>
@@ -1985,7 +2017,6 @@ function renderTable(reset){
         <td class="num">${r.qtyScm==null?'<span class="muted">—</span>':fmt(r.qtyScm)}</td>
         <td class="num sel${selCls}">${r.diff==null?'<span class="muted">—</span>':fmtSel(r.diff)}</td>
         <td class="muted" style="font-size:11.5px">${escAttr(r.src)}</td>
-        <td><span class="tag ${s.cls}">${s.label}</span></td>
         ${caseCell}
         ${noteCell}`;
       frag.appendChild(tr);
@@ -2260,6 +2291,68 @@ document.getElementById('btnColFilters').onclick = e=>{
   e.currentTarget.setAttribute('aria-pressed', String(on));
   ukurKolomMenempel();
 };
+
+/* ================= Pilih kolom yang ditampilkan (seperti Inbound) =================
+   Urutan di sini = urutan kolom tabel (#hrow, baris filter, dan isi baris semuanya
+   memakai urutan yang sama), jadi kolom disembunyikan lewat aturan CSS nth-child.
+   Status dan PEB selalu tampil (keduanya kolom yang menempel di kiri). Hanya
+   tampilan: pencarian, filter, urutan, dan ekspor tidak berubah. */
+const KOLOM_TABEL = [
+  {key:'status',   label:'Status',              kunci:true},
+  {key:'peb',      label:'PEB',                 kunci:true},
+  {key:'category', label:'Kategori'},
+  {key:'aju',      label:'No. AJU'},
+  {key:'job',      label:'Job No.'},
+  {key:'grn',      label:'Tgl GRN (SCM)'},
+  {key:'gout',     label:'Tgl Keluar (SCM)'},
+  {key:'arr',      label:'Tgl Datang (Gudang)'},
+  {key:'shipInv',  label:'Shipper (Inventory)'},
+  {key:'shipScm',  label:'Shipper (SCM)'},
+  {key:'qtyInv',   label:'Qty Inventory'},
+  {key:'qtyScm',   label:'Qty SCM'},
+  {key:'diff',     label:'Selisih'},
+  {key:'src',      label:'Sumber'},
+  {key:'case',     label:'Case'},
+  {key:'notes',    label:'Catatan'}
+];
+const KOLOM_PREF = 'glt.inventory:kolom';
+function bacaKolomTersembunyi(){
+  try{ const v = JSON.parse(localStorage.getItem(KOLOM_PREF) || '[]'); return new Set(Array.isArray(v) ? v : []); }
+  catch(e){ return new Set(); }
+}
+let kolomSembunyi = bacaKolomTersembunyi();
+function simpanKolom(){ try{ localStorage.setItem(KOLOM_PREF, JSON.stringify([...kolomSembunyi])); }catch(e){} }
+function terapkanKolom(){
+  let st = document.getElementById('kolomStyle');
+  if(!st){ st = document.createElement('style'); st.id = 'kolomStyle'; document.head.appendChild(st); }
+  st.textContent = KOLOM_TABEL.map((k,i)=> (!k.kunci && kolomSembunyi.has(k.key))
+    ? `#tbl tr>*:nth-child(${i+1}){display:none}` : '').join('\n');
+  const btn = document.getElementById('btnKolom');
+  if(btn) btn.textContent = kolomSembunyi.size ? `Kolom (${KOLOM_TABEL.length - kolomSembunyi.size}/${KOLOM_TABEL.length}) ▾` : 'Kolom ▾';
+}
+function gambarMenuKolom(){
+  const m = document.getElementById('menuKolom');
+  m.innerHTML = '<div class="mh">Tampilkan kolom</div>' + KOLOM_TABEL.map(k=>
+    `<label class="${k.kunci ? 'kunci' : ''}"><input type="checkbox" data-kol="${k.key}" ${kolomSembunyi.has(k.key) ? '' : 'checked'} ${k.kunci ? 'disabled' : ''}>${escAttr(k.label)}${k.kunci ? ' <span class="muted">(selalu)</span>' : ''}</label>`
+  ).join('') + '<div class="mk-foot"><button type="button" class="btn btn-ghost btn-sm" data-mk="semua">Tampilkan semua</button></div>';
+}
+(function wireMenuKolom(){
+  const btn = document.getElementById('btnKolom'), menu = document.getElementById('menuKolom');
+  if(!btn || !menu) return;
+  const tutup = ()=>{ menu.hidden = true; btn.setAttribute('aria-expanded','false'); };
+  btn.onclick = e=>{ e.stopPropagation(); if(menu.hidden) gambarMenuKolom(); menu.hidden = !menu.hidden; btn.setAttribute('aria-expanded', String(!menu.hidden)); };
+  menu.addEventListener('change', e=>{
+    const cb = e.target.closest('input[data-kol]'); if(!cb) return;
+    if(cb.checked) kolomSembunyi.delete(cb.dataset.kol); else kolomSembunyi.add(cb.dataset.kol);
+    simpanKolom(); terapkanKolom(); ukurKolomMenempel();
+  });
+  menu.addEventListener('click', e=>{
+    if(e.target.closest('[data-mk="semua"]')){ kolomSembunyi = new Set(); simpanKolom(); terapkanKolom(); gambarMenuKolom(); ukurKolomMenempel(); }
+  });
+  document.addEventListener('click', e=>{ if(!menu.hidden && !e.target.closest('#wrapKolom')) tutup(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !menu.hidden){ tutup(); btn.focus(); } });
+  terapkanKolom();
+})();
 
 /* Menu "Lainnya" */
 (function wireMenuLain(){
