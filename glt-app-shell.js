@@ -629,9 +629,16 @@
       if (document.body.classList.contains("glt-shell--gated") && Object.keys(frames).length) bersihkan();
     }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
 
+    // Path halaman, dinormalkan: ".../inbound/" dan ".../inbound/index.html" dianggap sama.
+    function jalur(u) {
+      return String(u || "").split(/[?#]/)[0].replace(/index\.html$/i, "");
+    }
     document.addEventListener("click", function (e) {
       var m = modulDariKlik(e);
       if (!m) return;
+      // Modul yang sama TAPI halaman lain (mis. Inbound versi lama -> Inbound baru):
+      // navigasi biasa, jangan dicegat.
+      if (m.id === here && jalur(m.href) !== jalur(location.href)) return;
       e.preventDefault();
       tampilkan(m.id, m.href);
     }, true);
