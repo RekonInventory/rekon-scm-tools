@@ -21,7 +21,7 @@
   const WS = "default";
   const STATUS_CASE = ["OPEN", "IN PROGRESS", "CLOSED"];
   const LABEL_TIPE = {
-    TIDAK_ADA_DI_SCM:"Tidak ada di SCM", TIDAK_ADA_DI_INVENTORY:"Tidak ada di Inventory", SELISIH_QTY:"Selisih qty",
+    TIDAK_ADA_DI_SCM:"Tidak ada di SCM", TIDAK_ADA_DI_INVENTORY:"Tidak ada di report Adidas/Nike", SELISIH_QTY:"Selisih qty",
     OUTBOUND_HARI_INI:"Outbound tanggal ini", INBOUND_HARI_INI:"Inbound tanggal ini", LAINNYA:"Lainnya"
   };
   const TIPE_URUT = ["TIDAK_ADA_DI_SCM", "TIDAK_ADA_DI_INVENTORY", "SELISIH_QTY", "OUTBOUND_HARI_INI", "INBOUND_HARI_INI", "LAINNYA"];
@@ -272,7 +272,8 @@
   }
   function ringkasan(){
     const el = $("caseSummary");
-    if(el) el.textContent = st.aktif ? ringkasHitung() : "";
+    /* hanya tampil bila sudah ada case (angka 0 semua = tulisan kecil tanpa guna) */
+    if(el) el.textContent = (st.aktif && st.rows.size) ? ringkasHitung() : "";
   }
 
   /* info ringkas untuk kolom "Case" di tabel */
@@ -372,12 +373,12 @@
   function penjelasan(r){
     const ref = state.refDate;
     switch(r.status){
-      case "MATCH": return "Qty Inventory dan qty SCM sama (" + fmtN(r.qtyInv) + ").";
-      case "SELISIH": return "Qty Inventory " + fmtN(r.qtyInv) + " berbeda dengan qty SCM " + fmtN(r.qtyScm) + " (selisih " + fmtN(r.diff) + "). Periksa apakah ada pengeluaran/penerimaan yang belum tercatat di salah satu sisi.";
-      case "NO_SCM": return "PEB ada di Inventory tetapi tidak ditemukan di laporan SCM.";
-      case "NO_INV": return "PEB ada di laporan SCM tetapi tidak ditemukan di Inventory.";
-      case "OUTBOUND": return "PEB ada di Inventory tanpa pasangan di SCM, tetapi tanggal keluarnya (" + (r.gout || "-") + ") sama dengan tanggal acuan" + (ref ? " " + ref : "") + ". Sumber lain biasanya baru diperbarui besok, jadi tidak dihitung sebagai selisih.";
-      case "INBOUND": return "PEB ada di SCM tanpa pasangan di Inventory, tetapi tanggal GRN-nya (" + (r.grn || "-") + ") sama dengan tanggal acuan" + (ref ? " " + ref : "") + ". Sumber lain biasanya baru diperbarui besok, jadi tidak dihitung sebagai selisih.";
+      case "MATCH": return "Qty report Adidas/Nike dan qty SCM sama (" + fmtN(r.qtyInv) + ").";
+      case "SELISIH": return "Qty report Adidas/Nike " + fmtN(r.qtyInv) + " berbeda dengan qty SCM " + fmtN(r.qtyScm) + " (selisih " + fmtN(r.diff) + "). Periksa apakah ada pengeluaran/penerimaan yang belum tercatat di salah satu sisi.";
+      case "NO_SCM": return "PEB ada di report Adidas/Nike tetapi tidak ditemukan di laporan SCM.";
+      case "NO_INV": return "PEB ada di laporan SCM tetapi tidak ditemukan di report Adidas/Nike.";
+      case "OUTBOUND": return "PEB ada di report Adidas/Nike tanpa pasangan di SCM, tetapi tanggal keluarnya (" + (r.gout || "-") + ") sama dengan tanggal acuan" + (ref ? " " + ref : "") + ". Sumber lain biasanya baru diperbarui besok, jadi tidak dihitung sebagai selisih.";
+      case "INBOUND": return "PEB ada di SCM tanpa pasangan di report Adidas/Nike, tetapi tanggal GRN-nya (" + (r.grn || "-") + ") sama dengan tanggal acuan" + (ref ? " " + ref : "") + ". Sumber lain biasanya baru diperbarui besok, jadi tidak dihitung sebagai selisih.";
       default: return "—";
     }
   }
@@ -446,7 +447,7 @@
         ["Tgl Datang (Gudang)", ada(r.arr)], ["Sumber file", ada(r.src)],
         ["Case", list.length ? list.length + " case (" + list.filter(c => c.status !== "CLOSED").length + " aktif)" : "Belum ada"]])) +
       seksi("data", "Perbandingan data",
-        '<table class="ivd-compare"><thead><tr><th></th><th>Inventory</th><th>SCM</th><th class="num">Selisih</th></tr></thead><tbody>' +
+        '<table class="ivd-compare"><thead><tr><th></th><th>Report</th><th>SCM</th><th class="num">Selisih</th></tr></thead><tbody>' +
         '<tr><th>Qty</th><td class="num">' + (r.qtyInv == null ? "—" : esc(fmtN(r.qtyInv))) + '</td><td class="num">' + (r.qtyScm == null ? "—" : esc(fmtN(r.qtyScm))) + "</td>" +
           '<td class="num">' + (r.diff == null ? "—" : '<span class="' + (r.diff === 0 ? "ivd-ok" : "ivd-bad") + '">' + esc(fmtN(r.diff)) + "</span>") + "</td></tr>" +
         '<tr><th>Shipper</th><td>' + ada(r.shipInv) + "</td><td>" + ada(r.shipScm) + '</td><td class="num">—</td></tr>' +
@@ -648,7 +649,7 @@
     return ws;
   }
   const KOLOM_CASE = ["Case","Case ID","PEB","Kategori Brand","No. AJU","Job No.","Jenis","Status","PIC","Kategori","Catatan","Tindakan",
-    "Status Rekon (saat disimpan)","Qty Inventory","Qty SCM","Selisih","Dibuat","Dibuat Oleh","Diubah","Diubah Oleh","Versi",
+    "Status Rekon (saat disimpan)","Qty Report","Qty SCM","Selisih","Dibuat","Dibuat Oleh","Diubah","Diubah Oleh","Versi",
     "Ditutup","Ditutup Oleh","Ada di Hasil Ini"];
   function barisCase(c, adaDiHasil){
     return [labelCase(c), c.id, c.peb || c.record_key, c.category || "", c.aju || "", c.job || "", LABEL_TIPE[c.case_type] || c.case_type || "",
@@ -692,7 +693,7 @@
   }
 
   /* ------------------------------------------------------------ bulk upload */
-  const KOLOM_TPL = ["PEB","Brand","No. AJU","Job No.","Status Rekon","Qty Inventory","Qty SCM","Selisih","Case ID","Status Case",
+  const KOLOM_TPL = ["PEB","Brand","No. AJU","Job No.","Status Rekon","Qty Report","Qty SCM","Selisih","Case ID","Status Case",
     "Kategori","PIC","Catatan","Tindakan"];
   function unduhTemplate(){
     if(!st.aktif){ gltToast("Fitur case Inventory belum aktif: SQL docs/sql/inventory_2026-10-17_01_cases.sql belum dijalankan.", "warn", 9000); return; }

@@ -299,6 +299,7 @@
     let open = 0, prog = 0, closed = 0;
     st.rows.forEach(c => { if(c.status === "OPEN") open++; else if(c.status === "IN PROGRESS") prog++; else closed++; });
     const adj = Object.keys(adjust).length;
+    if(!st.rows.size && !adj) return "";   /* belum ada case: jangan tampilkan deretan angka 0 */
     return fmtN(open) + " case open · " + fmtN(prog) + " in progress · " + fmtN(closed) + " closed" +
            (adj ? " · " + fmtN(adj) + " baris penyesuaian" : "");
   }

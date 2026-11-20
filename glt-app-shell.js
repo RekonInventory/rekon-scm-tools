@@ -444,6 +444,12 @@
       // idle terus-menerus dan timeout tidak akan pernah tercapai.
       if (e && !e.isTrusted) return;
       var now = Date.now();
+      // Sebelum mencatat "aktif sekarang", periksa dulu jejak LAMA. Kalau sudah lewat
+      // 1 jam, gerakan pertama ini justru tanda pengguna baru kembali -> keluar.
+      // Menutup celah laptop tidur/bangun (tab tetap terlihat, jadi visibilitychange
+      // & focus tidak terpicu) dan timer yang dibekukan browser: dulu gerakan mouse
+      // pertama sesudah bangun menimpa jejak idle sebelum sempat diperiksa.
+      if (e && authedUser && !loggedOut && now - readLastActivity() >= IDLE_LIMIT_MS) { logoutIdle(); return; }
       memoryFallback = now;
       if (now - lastMark < 5000) return;
       lastMark = now;
@@ -478,6 +484,11 @@
     function logoutIdle() {
       if (loggedOut) return;
       loggedOut = true;
+      // Di dalam bingkai ruang kerja: yang keluar & memuat ulang adalah halaman induk.
+      if (EMBED) {
+        try { if (window.top.__gltShell && window.top.__gltShell.logoutIdle) { window.top.__gltShell.logoutIdle(); return; } }
+        catch (e) { /* lanjut keluar sendiri */ }
+      }
       var client = supaClient();
       if (!client) return;
       function done() {
@@ -513,61 +524,133 @@
     window.addEventListener("focus", checkIdle);
 
     setInterval(checkIdle, IDLE_CHECK_MS);
+    if (!EMBED) { window.__gltShell = window.__gltShell || {}; window.__gltShell.logoutIdle = logoutIdle; }
   }
 
   // ---------------------------------------------------------------------------
-  // Beberapa rekon sekaligus dalam satu login: tiap modul punya tab browser
-  // sendiri (nama jendela "glt-<modul>"). Klik menu/link ke modul LAIN tidak
-  // meninggalkan halaman ini (hasil rekon di sini tetap utuh) — tab modul itu
-  // dibuka, atau difokuskan TANPA dimuat ulang bila sudah terbuka. Klik ke modul
-  // yang sama, Ctrl/Shift/klik tengah, dan link ber-target tetap perilaku biasa.
-  // Login dipakai bersama semua tab (Supabase menyimpan sesi di localStorage).
+  // RUANG KERJA SATU TAB: beberapa rekon sekaligus tanpa membuka tab browser baru.
+  // Halaman yang pertama dibuka = "induk" (punya topbar & sidebar). Klik menu ke
+  // modul LAIN tidak meninggalkan halaman induk: modul itu dimuat di dalam bingkai
+  // (iframe) yang menutupi area konten, dan bingkai yang sudah pernah dibuka TETAP
+  // HIDUP di belakang layar saat pindah menu — hasil rekon di tiap modul tidak hilang
+  // dan tidak dimuat ulang. Klik menu modul induk -> kembali ke halaman induk.
+  // Halaman di dalam bingkai berjalan dalam "mode tertanam" (?glt-embed=1): tanpa
+  // topbar/sidebar sendiri. Login dipakai bersama (sesi Supabase di localStorage).
+  // Ctrl/Shift/klik tengah tetap membuka tab baru seperti biasa.
   // ---------------------------------------------------------------------------
-  // Notifikasi ringkas (kelas .glt-toast dari glt-design-system.css), tanpa bergantung
-  // pada gltToast milik halaman — tidak semua halaman (mis. Inbound v3, Dashboard) punya.
-  function shellToast(text) {
-    var wrap = document.getElementById("gltToastWrap");
-    if (!wrap) { wrap = document.createElement("div"); wrap.id = "gltToastWrap"; wrap.className = "glt-toast-wrap"; document.body.appendChild(wrap); }
-    var el = document.createElement("div"); el.className = "glt-toast warn"; el.setAttribute("role", "status");
-    var msg = document.createElement("div"); msg.className = "glt-toast-msg"; msg.textContent = text;
-    var x = document.createElement("span"); x.className = "glt-toast-x"; x.textContent = "×";
-    x.addEventListener("click", function () { el.remove(); });
-    el.appendChild(msg); el.appendChild(x); wrap.appendChild(el);
-    setTimeout(function () { el.remove(); }, 9000);
+  var EMBED = (function () {
+    try { return /[?&]glt-embed=1\b/.test(location.search) && window.top !== window.self; }
+    catch (e) { return false; }
+  })();
+
+  function shellCss() {
+    if (document.getElementById("gsWorkspaceCss")) return;
+    var st = document.createElement("style");
+    st.id = "gsWorkspaceCss";
+    st.textContent =
+      "#gsWorkspace{position:fixed;top:var(--shell-topbar-h,48px);left:var(--shell-sidebar-w,232px);right:0;bottom:0;z-index:999;display:none;background:var(--background,#F8FAFC)}" +
+      "body.glt-shell--collapsed #gsWorkspace{left:var(--shell-sidebar-w-collapsed,60px)}" +
+      "@media (max-width:1024px){#gsWorkspace{left:0}}" +
+      "body.glt-ws-on #gsWorkspace{display:block}" +
+      "body.glt-ws-on{overflow:hidden}" +
+      "body.glt-shell--gated #gsWorkspace{display:none}" +
+      "#gsWorkspace iframe{width:100%;height:100%;border:0;display:none;background:var(--background,#F8FAFC)}" +
+      "#gsWorkspace iframe.on{display:block}" +
+      "body.glt-shell.glt-embed{padding:0 !important}";
+    document.head.appendChild(st);
   }
 
-  function bukaTabModul(id, href) {
-    var w = null;
-    try { w = window.open("", "glt-" + id); } catch (e) { w = null; }
-    if (!w) {
-      // Pop-up diblokir browser. Jangan pindah halaman diam-diam (hasil rekon di tab
-      // ini bisa hilang): beri tahu pengguna. Tanpa komponen toast, navigasi biasa.
-      shellToast("Browser memblokir tab baru. Izinkan pop-up untuk situs ini, atau Ctrl+klik menu untuk membukanya di tab baru.");
-      return;
-    }
-    try {
-      // Tab baru masih kosong -> arahkan ke modul. Tab lama berisi modul -> cukup fokus.
-      var kosong = !w.location || w.location.href === "about:blank" || w.location.href === "";
-      if (kosong) w.location.href = href;
-    } catch (e) {
-      try { w.location.href = href; } catch (e2) { /* abaikan */ }
-    }
-    try { w.focus(); } catch (e) { /* abaikan */ }
+  // Link (href absolut) yang mengarah ke modul suite ini dan boleh ditangani ruang kerja.
+  function modulDariKlik(e) {
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return null;
+    var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+    if (!a || (a.getAttribute("target") && a.getAttribute("target") !== "_self") || a.hasAttribute("download")) return null;
+    var raw = a.getAttribute("href") || "";
+    if (!raw || raw.charAt(0) === "#" || /^(javascript|mailto|tel):/i.test(raw)) return null;
+    var id = navIdForHref(a.href);
+    return id ? { id: id, href: a.href } : null;
   }
 
-  function setupModuleTabs() {
+  function setupWorkspace() {
     var here = activeNavId();
-    try { if (!window.name || window.name.indexOf("glt-") === 0) window.name = "glt-" + here; } catch (e) { /* abaikan */ }
+    var frames = {};           // id modul -> iframe
+    var current = here;
+    var baseTitle = document.title;
+    var titles = {};
+    shellCss();
+    var box = document.createElement("div");
+    box.id = "gsWorkspace";
+    document.body.appendChild(box);
+
+    function tandaiMenu(id) {
+      var items = document.querySelectorAll(".shell-nav-item");
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].getAttribute("data-nav") === id) items[i].setAttribute("aria-current", "page");
+        else items[i].removeAttribute("aria-current");
+      }
+      var item = NAV.concat(ADMIN_NAV).filter(function (n) { return n.id === id; })[0];
+      var crumb = document.querySelector(".shell-crumb b");
+      if (crumb && item) crumb.textContent = item.label;
+    }
+
+    function tampilkan(id, href) {
+      if (id === here) {
+        document.body.classList.remove("glt-ws-on");
+        Object.keys(frames).forEach(function (k) { frames[k].classList.remove("on"); });
+        document.title = baseTitle;
+      } else {
+        var f = frames[id];
+        if (!f) {
+          f = document.createElement("iframe");
+          f.title = id;
+          var url = String(href).split("#")[0];
+          f.src = url + (url.indexOf("?") >= 0 ? "&" : "?") + "glt-embed=1";
+          f.addEventListener("load", function () {
+            try { titles[id] = f.contentDocument.title; if (current === id) document.title = titles[id]; } catch (e) { /* abaikan */ }
+          });
+          frames[id] = f;
+          box.appendChild(f);
+        }
+        Object.keys(frames).forEach(function (k) { frames[k].classList.toggle("on", k === id); });
+        document.body.classList.add("glt-ws-on");
+        if (titles[id]) document.title = titles[id];
+      }
+      current = id;
+      tandaiMenu(id);
+    }
+
+    // Keluar/akun berganti: buang semua bingkai supaya data akun lama tidak tertinggal.
+    function bersihkan() {
+      Object.keys(frames).forEach(function (k) { try { frames[k].remove(); } catch (e) { /* abaikan */ } });
+      frames = {};
+      if (current !== here) tampilkan(here);
+    }
+    new MutationObserver(function () {
+      if (document.body.classList.contains("glt-shell--gated") && Object.keys(frames).length) bersihkan();
+    }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+
     document.addEventListener("click", function (e) {
-      if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-      var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
-      if (!a || (a.getAttribute("target") && a.getAttribute("target") !== "_self") || a.hasAttribute("download")) return;
-      var raw = a.getAttribute("href") || "";
-      if (!raw || raw.charAt(0) === "#" || /^(javascript|mailto|tel):/i.test(raw)) return;
-      var id = navIdForHref(a.href);
-      if (!id || id === here) return;
+      var m = modulDariKlik(e);
+      if (!m) return;
       e.preventDefault();
-      bukaTabModul(id, a.href);
+      tampilkan(m.id, m.href);
+    }, true);
+
+    // dipakai halaman tertanam (link modul di dalam bingkai) & logout idle dari bingkai
+    window.__gltShell = window.__gltShell || {};
+    window.__gltShell.buka = function (id, href) { tampilkan(id, href); };
+  }
+
+  // Mode tertanam: link ke modul lain di dalam bingkai diteruskan ke halaman induk.
+  function setupEmbedLinks() {
+    document.addEventListener("click", function (e) {
+      var m = modulDariKlik(e);
+      if (!m) return;
+      var top = null;
+      try { top = window.top.__gltShell; } catch (err) { top = null; }
+      if (!top || !top.buka) return;
+      e.preventDefault();
+      top.buka(m.id, m.href);
     }, true);
   }
 
@@ -577,13 +660,24 @@
     var legacyNav = document.querySelector(".glt-nav");
     if (legacyNav && legacyNav.parentNode) legacyNav.parentNode.removeChild(legacyNav);
 
+    if (EMBED) {
+      // Di dalam bingkai ruang kerja: tanpa topbar/sidebar; aktivitas tetap dicatat
+      // supaya auto-logout 1 jam memperhitungkan kerja di modul mana pun.
+      shellCss();
+      document.body.classList.add("glt-shell", "glt-embed");
+      setupEmbedLinks();
+      setupIdleLogout();
+      fillIdentity();
+      return;
+    }
+
     build();
     adoptSyncStatus();
     document.body.classList.add("glt-shell");
     setupAuthGate();
     setupCollapse();
     setupDrawer();
-    setupModuleTabs();
+    setupWorkspace();
     setupUserMenu();
     setupIdleLogout(); // harus sebelum fillIdentity(): memasang hook sesi awal yang dipanggil fillIdentity()
     fillIdentity();

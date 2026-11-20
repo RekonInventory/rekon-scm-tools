@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cek Inventory vs SCM — Rekonsiliasi PEB</title>
+<title>Cek Report Adidas/Nike vs SCM — Rekonsiliasi PEB</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -356,8 +356,11 @@ select:focus,input:focus{
 .lg{border-radius:var(--gs-radius-pill);border-color:var(--border);padding:6px 12px;transition:background .12s ease-out,border-color .12s ease-out}
 .lg:hover{border-color:var(--border-strong);background:var(--surface-muted)}
 .lg .dot{border-radius:50%}
-.lg .lb{font-size:12px;color:var(--text-secondary)}
-.lg .ct{font-size:12px;color:var(--text)}
+.lg .lb{font-size:13px;color:var(--text-secondary)}
+.lg .ct{font-size:13px;color:var(--text)}
+.legend{margin-top:14px}
+/* elemen ber-atribut hidden selalu tersembunyi, walau kelasnya memberi display lain */
+[hidden]{display:none !important}
 .refnote{font-size:12.5px;color:var(--text-muted)}
 
 /* --- Toolbar tabel sebagai satu unit --- */
@@ -567,7 +570,7 @@ td.casecell{min-width:120px}
 
 <div id="authgate">
   <div class="authbox">
-    <h2>Cek Inventory vs SCM</h2>
+    <h2>Cek Report Adidas/Nike vs SCM</h2>
     <p class="sub">Masuk untuk mengakses data bersama</p>
     <form id="authForm">
       <label for="authEmail">Nama Pengguna</label>
@@ -583,13 +586,11 @@ td.casecell{min-width:120px}
 <div class="band">
   <div class="band-in">
     <div>
-      <div class="eyebrow">Rekonsiliasi PEB · Inventory ↔ SCM</div>
-      <h1>Cek Inventory vs Laporan SCM</h1>
-      <div class="sub">Cocokkan nomor PEB dan jumlah karton antara laporan gudang dan laporan SCM. File diproses di browser; hasil dan catatan disimpan di server bersama.</div>
+      <h1>Cek Report Adidas/Nike vs SCM</h1>
     </div>
     <div class="meta">
       <div>Dijalankan <b id="runDate">—</b></div>
-      <div>Baris terbaca <b id="runRows">0</b></div>
+      <div hidden>Baris terbaca <b id="runRows">0</b></div>
       <div class="acct"><span id="syncStatus"></span><span id="acctEmail"></span><button type="button" id="btnChangePassword">Ganti Password</button><button type="button" id="btnSignOut">Keluar</button></div>
     </div>
   </div>
@@ -612,13 +613,10 @@ td.casecell{min-width:120px}
     <div class="step-head">
       <span class="step-no">Langkah 1</span>
       <span class="step-title">Masukkan file</span>
-      <span class="step-hint">Format .xlsx / .xls / .csv</span>
     </div>
     <div class="drop drop-all" id="dropAll">
-      <div class="drop-label">Satu kolom untuk semua file</div>
       <div class="drop-title">Tarik &amp; lepas semua file di sini, atau klik untuk memilih</div>
-      <div class="drop-desc">Masukkan sekaligus: <b>Inventory</b> (boleh Adidas dan Nike), <b>laporan SCM</b>, dan bila ada <b>Inbound SCM</b> (tanggal GRN)
-        serta <b>Outbound SCM</b> (tanggal keluar). Jenis tiap file dikenali otomatis dari isi dan namanya; ubah lewat pilihan di sebelah nama file bila salah.</div>
+      <div class="drop-desc">Report Adidas/Nike, laporan SCM, Inbound SCM, dan Outbound SCM &mdash; jenis file dikenali otomatis.</div>
       <input type="file" id="fileAll" multiple accept=".xlsx,.xls,.csv">
     </div>
     <div class="rolebar" id="roleBar"></div>
@@ -630,7 +628,6 @@ td.casecell{min-width:120px}
     <div class="step-head">
       <span class="step-no">Langkah 2</span>
       <span class="step-title">Jalankan pengecekan</span>
-      <span class="step-hint">Kolom dibaca otomatis; klik "Atur kolom" pada file bila perlu</span>
     </div>
     <div class="runbar">
       <button class="btn btn-main" id="btnRun" disabled>Jalankan pengecekan</button>
@@ -646,7 +643,6 @@ td.casecell{min-width:120px}
     <div class="step-head">
       <span class="step-no">Langkah 3</span>
       <span class="step-title">Hasil</span>
-      <span class="step-hint">Mulai dari kartu "Yang perlu diurus" di bawah</span>
     </div>
 
     <div class="perlu" id="perluDiurus"></div>
@@ -658,16 +654,12 @@ td.casecell{min-width:120px}
 
     <div id="panelRecon">
       <div class="ledger">
-        <div class="ledger-h">
-          <span class="t">Sebaran status per nomor PEB <span class="t-hint">(klik batang atau label untuk menyaring)</span></span>
-          <span class="n" id="ledgerTotal"></span>
-        </div>
+        <span id="ledgerTotal" hidden></span>
         <div class="strip" id="strip"></div>
         <div class="legend" id="legend"></div>
         <div class="refbar hide" id="refWrap">
           <label for="refDate">Tanggal acuan</label>
-          <input type="date" id="refDate">
-          <span class="refnote">PEB tanpa pasangan yang GRN/keluarnya jatuh pada tanggal ini dipisahkan sebagai <b>Inbound tanggal ini</b> atau <b>Outbound tanggal ini</b>.</span>
+          <input type="date" id="refDate" title="PEB tanpa pasangan yang GRN/keluarnya jatuh pada tanggal ini dipisahkan sebagai Inbound/Outbound tanggal ini">
         </div>
       </div>
 
@@ -715,9 +707,9 @@ td.casecell{min-width:120px}
               <th data-key="grn">Tgl GRN (SCM)<i class="sarr"></i></th>
               <th data-key="gout">Tgl Keluar (SCM)<i class="sarr"></i></th>
               <th data-key="arr">Tgl Datang (Gudang)<i class="sarr"></i></th>
-              <th data-key="shipInv">Shipper (Inventory)<i class="sarr"></i></th>
+              <th data-key="shipInv">Shipper (Report)<i class="sarr"></i></th>
               <th data-key="shipScm">Shipper (SCM)<i class="sarr"></i></th>
-              <th data-key="qtyInv">Qty Inventory<i class="sarr"></i></th>
+              <th data-key="qtyInv">Qty Report<i class="sarr"></i></th>
               <th data-key="qtyScm">Qty SCM<i class="sarr"></i></th>
               <th data-key="diff">Selisih<i class="sarr"></i></th>
               <th data-key="src">Sumber<i class="sarr"></i></th>
@@ -785,7 +777,7 @@ td.casecell{min-width:120px}
         <input type="text" id="lsearch" placeholder="Cari PEB, SO, atau PO…">
         <select id="lsrcFilter">
           <option value="">Semua sumber</option>
-          <option value="Inventory">Inventory</option>
+          <option value="Report Adidas/Nike">Report Adidas/Nike</option>
           <option value="SCM">SCM</option>
           <option value="Inbound SCM">Inbound SCM</option>
           <option value="Outbound SCM">Outbound SCM</option>
@@ -811,10 +803,6 @@ td.casecell{min-width:120px}
         <button class="btn btn-ghost btn-sm hide" id="lbtnMore">Tampilkan 500 baris lagi</button>
       </div>
     </div>
-  </div>
-
-  <div class="note">
-    <b>Cara membagikan ke rekan tim.</b> File ini satu berkas HTML mandiri. Simpan di SharePoint, Google Drive, atau folder jaringan bersama, lalu rekan tim cukup membukanya lewat browser — tidak perlu Excel, Power Query, atau akses ke PC Anda. Data tetap di komputer masing-masing karena seluruh perhitungan berjalan di browser.
   </div>
 
 </div>
@@ -1016,11 +1004,11 @@ const state = { inv:[], scm:[], inb:[], out:[], unk:[], rows:[], filter:new Set(
   colFilters:{ peb:'', category:'', aju:'', job:'', grn:'', gout:'', arr:'', shipInv:'', shipScm:'',
     qtyInvMin:'', qtyInvMax:'', qtyScmMin:'', qtyScmMax:'', diffMin:'', diffMax:'', src:'', status:'', case:'', notes:'' } };
 const STATUS = {
-  MATCH:            {label:'Cocok',                color:'#1B7F4B', cls:'t-ok'},
+  MATCH:            {label:'Sesuai',               color:'#1B7F4B', cls:'t-ok'},
   SELISIH:          {label:'Selisih qty',          color:'#B45309', cls:'t-warn'},
   NO_SCM:           {label:'Tidak ada di SCM',     color:'#B91C1C', cls:'t-err'},
   OUTBOUND:         {label:'Outbound tanggal ini', color:'#0E6BA8', cls:'t-blue'},
-  NO_INV:           {label:'Tidak ada di Inventory',color:'#6D28D9', cls:'t-pur'},
+  NO_INV:           {label:'Tidak ada di report Adidas/Nike',color:'#6D28D9', cls:'t-pur'},
   INBOUND:          {label:'Inbound tanggal ini',  color:'#0B6E5F', cls:'t-teal'}
 };
 
@@ -1325,7 +1313,7 @@ function bestSheet(wbk){
    (tanggal keluar). Jenis bisa diubah di kartu file; file yang belum dikenali ditaruh di state.unk
    sampai pengguna menentukan jenisnya. */
 const SIDES = ['inv','scm','inb','out'];
-const SIDE_TITLE = {inv:'Inventory (gudang)', scm:'Laporan SCM', inb:'Inbound SCM (tanggal GRN)', out:'Outbound SCM (tanggal keluar)'};
+const SIDE_TITLE = {inv:'Report Adidas/Nike', scm:'Laporan SCM', inb:'Inbound SCM', out:'Outbound SCM'};
 const SIDE_NEED = {inv:true, scm:true, inb:false, out:false};   /* wajib / opsional */
 
 /* Kenali jenis file dari hasil analisis kolom sheet terpilih (a), nama file dan nama sheet.
@@ -1521,9 +1509,9 @@ function updateRun(){
   if(msg.classList.contains('bad')) return;
   const extra = (state.inb.length ? `, ${state.inb.length} Inbound SCM` : '') + (state.out.length ? `, ${state.out.length} Outbound SCM` : '');
   if(state.unk.length) msg.textContent = `Pilih jenis file untuk ${state.unk.length} file yang belum dikenali.`;
-  else if(ok) msg.textContent = `Siap: ${state.inv.length} file inventory, ${state.scm.length} file SCM${extra}.`;
+  else if(ok) msg.textContent = `Siap: ${state.inv.length} file Report Adidas/Nike, ${state.scm.length} file SCM${extra}.`;
   else if(state.inv.length && !state.scm.length) msg.textContent = 'Tambahkan file SCM.';
-  else if(!state.inv.length && state.scm.length) msg.textContent = 'Tambahkan file inventory.';
+  else if(!state.inv.length && state.scm.length) msg.textContent = 'Tambahkan file Report Adidas/Nike.';
   else msg.textContent = 'Belum ada file.';
 }
 
@@ -1634,7 +1622,7 @@ function applyStatus(){
   });
 }
 
-const SRC_LABEL = {inv:'Inventory', scm:'SCM', inb:'Inbound SCM', out:'Outbound SCM'};
+const SRC_LABEL = {inv:'Report Adidas/Nike', scm:'SCM', inb:'Inbound SCM', out:'Outbound SCM'};
 
 /* Daftar mentah PEB/SO/PO per baris dari tiap file, untuk pencarian silang cepat
    (bukan hasil rekonsiliasi — murni salinan referensi per file). */
@@ -1878,21 +1866,21 @@ function renderPerluDiurus(){
   const c = counts(), n = state.rows.length;
   const jml = arr=>arr.reduce((s,k)=>s+(c[k]||0),0);
   const act = jml(['NO_SCM','NO_INV']), chk = c.SELISIH||0, tunggu = (c.OUTBOUND||0)+(c.INBOUND||0), cocok = c.MATCH||0;
-  const rinci = k=> (c[k] ? `${c[k].toLocaleString('id-ID')} ${STATUS[k].label.replace(/^(\w)/, m=>m.toLowerCase()).replace(/\bscm\b/i,'SCM').replace(/\binventory\b/i,'Inventory')}` : '');
+  const rinci = k=> (c[k] ? `${c[k].toLocaleString('id-ID')} ${STATUS[k].label.replace(/^(\w)/, m=>m.toLowerCase()).replace(/\bscm\b/i,'SCM').replace(/\badidas\/nike\b/i,'Adidas/Nike')}` : '');
   el.innerHTML =
     `<p class="perlu-kal"><b>${n.toLocaleString('id-ID')}</b> PEB diperiksa · <b>${(act+chk).toLocaleString('id-ID')}</b> perlu diurus · `+
-    `<b>${cocok.toLocaleString('id-ID')}</b> cocok${tunggu ? ` · <b>${tunggu.toLocaleString('id-ID')}</b> menunggu pencatatan` : ''}</p>`+
+    `<b>${cocok.toLocaleString('id-ID')}</b> sesuai${tunggu ? ` · <b>${tunggu.toLocaleString('id-ID')}</b> menunggu pencatatan` : ''}</p>`+
     `<div class="perlu-utama">` + KARTU.map(k=>{
       const v = jml(k.status);
       return `<button type="button" class="pl-kartu ${k.kelas}${v?'':' nol'}${sameSet(state.filter,k.status)?' aktif':''}" data-kartu="${k.id}"
         title="Klik untuk menyaring tabel; klik lagi untuk melepas">
         <span class="lbl">${k.lbl}</span><span class="val">${v.toLocaleString('id-ID')}</span>
-        <span class="sub">${v ? k.status.map(rinci).filter(Boolean).join(' · ') : k.ket}</span></button>`;
+        </button>`;
     }).join('') + `</div>` +
     `<div class="perlu-info">`+
       (tunggu ? `<button type="button" class="pl-chip${sameSet(state.filter,['OUTBOUND','INBOUND'])?' aktif':''}" data-chip="tunggu"
         title="PEB tanpa pasangan yang tanggal GRN/keluarnya sama dengan tanggal acuan">Menunggu pencatatan <b>${tunggu.toLocaleString('id-ID')}</b></button>` : '')+
-      `<button type="button" class="pl-chip${sameSet(state.filter,['MATCH'])?' aktif':''}" data-chip="cocok">Cocok <b>${cocok.toLocaleString('id-ID')}</b></button>`+
+      `<button type="button" class="pl-chip${sameSet(state.filter,['MATCH'])?' aktif':''}" data-chip="cocok">Sesuai <b>${cocok.toLocaleString('id-ID')}</b></button>`+
     `</div>`;
   el.querySelectorAll('[data-kartu]').forEach(b=>b.onclick = ()=>setFilterStatus(KARTU.find(k=>k.id===b.dataset.kartu).status));
   el.querySelectorAll('[data-chip]').forEach(b=>b.onclick = ()=>setFilterStatus(b.dataset.chip==='cocok' ? ['MATCH'] : ['OUTBOUND','INBOUND']));
@@ -1982,7 +1970,7 @@ function renderTable(reset){
   if(reset) tb.innerHTML='';
 
   if(!rows.length){
-    tb.innerHTML = `<tr><td colspan="16"><div class="empty"><b>Tidak ada baris yang cocok</b>Ubah kata kunci pencarian atau aktifkan kembali status yang disaring.</div></td></tr>`;
+    tb.innerHTML = `<tr><td colspan="16"><div class="empty"><b>Tidak ada baris yang sesuai</b>Ubah kata kunci pencarian atau aktifkan kembali status yang disaring.</div></td></tr>`;
   }else{
     const frag = document.createDocumentFragment();
     const caseMode = !!(window.INVCase && INVCase.aktif());
@@ -2094,8 +2082,8 @@ function allRowsSorted(){
   return state.sortKey ? state.rows.slice().sort(cmpRows) : state.rows.slice();
 }
 const LABEL_FILTER_KOLOM = { peb:'PEB', category:'Kategori', aju:'No. AJU', job:'Job No.', grn:'Tgl GRN (SCM)',
-  gout:'Tgl Keluar (SCM)', arr:'Tgl Datang (Gudang)', shipInv:'Shipper (Inventory)', shipScm:'Shipper (SCM)',
-  qtyInvMin:'Qty Inventory min', qtyInvMax:'Qty Inventory maks', qtyScmMin:'Qty SCM min', qtyScmMax:'Qty SCM maks',
+  gout:'Tgl Keluar (SCM)', arr:'Tgl Datang (Gudang)', shipInv:'Shipper (Report)', shipScm:'Shipper (SCM)',
+  qtyInvMin:'Qty Report min', qtyInvMax:'Qty Report maks', qtyScmMin:'Qty SCM min', qtyScmMax:'Qty SCM maks',
   diffMin:'Selisih min', diffMax:'Selisih maks', src:'Sumber', status:'Status (kolom)', case:'Case', notes:'Catatan' };
 const LABEL_FILTER_CASE = { none:'Tanpa case', any:'Ada case', active:'Aktif (Open / In Progress)', OPEN:'Open',
   'IN PROGRESS':'In Progress', closed:'Closed semua' };
@@ -2117,7 +2105,7 @@ function deskripsiFilter(){
 function exportData(rows){
   const caseMode = !!(window.INVCase && INVCase.aktif());
   return (rows || visibleRows()).map(r=>Object.assign({
-    'Shipper (Inventory)': r.shipInv,
+    'Shipper (Report)': r.shipInv,
     'Shipper (SCM)': r.shipScm,
     'PEB': r.peb,
     'Kategori': r.category,
@@ -2128,7 +2116,7 @@ function exportData(rows){
     'Tgl Keluar (SCM)': r.gout,
     'SO Number': r.so,
     'PO Number': r.po,
-    'Qty Inventory': r.qtyInv,
+    'Qty Report': r.qtyInv,
     'Qty SCM': r.qtyScm,
     'Selisih': r.diff,
     'Sumber File': r.src,
@@ -2160,7 +2148,7 @@ function renderListing(reset){
   if(reset) tb.innerHTML='';
 
   if(!rows.length){
-    tb.innerHTML = `<tr><td colspan="6"><div class="empty"><b>Tidak ada baris yang cocok</b>Ubah kata kunci pencarian atau sumber yang disaring.</div></td></tr>`;
+    tb.innerHTML = `<tr><td colspan="6"><div class="empty"><b>Tidak ada baris yang sesuai</b>Ubah kata kunci pencarian atau sumber yang disaring.</div></td></tr>`;
   }else{
     const frag = document.createDocumentFragment();
     for(let i=state.lshown;i<next;i++){
@@ -2235,7 +2223,7 @@ document.getElementById('btnXlsx').onclick = async ()=>{
 /* Unduh hasil filter: hanya baris yang sedang tampil (pencarian, legenda status, filter kolom, urutan) */
 document.getElementById('btnXlsxFilter').onclick = ()=>{
   const rows = visibleRows();
-  if(!rows.length){ gltToast('Tidak ada baris yang cocok dengan filter saat ini.', 'warn'); return; }
+  if(!rows.length){ gltToast('Tidak ada baris yang sesuai dengan filter saat ini.', 'warn'); return; }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportData(rows)), 'Hasil Filter');
   const per = {};
@@ -2306,9 +2294,9 @@ const KOLOM_TABEL = [
   {key:'grn',      label:'Tgl GRN (SCM)'},
   {key:'gout',     label:'Tgl Keluar (SCM)'},
   {key:'arr',      label:'Tgl Datang (Gudang)'},
-  {key:'shipInv',  label:'Shipper (Inventory)'},
+  {key:'shipInv',  label:'Shipper (Report)'},
   {key:'shipScm',  label:'Shipper (SCM)'},
-  {key:'qtyInv',   label:'Qty Inventory'},
+  {key:'qtyInv',   label:'Qty Report'},
   {key:'qtyScm',   label:'Qty SCM'},
   {key:'diff',     label:'Selisih'},
   {key:'src',      label:'Sumber'},
@@ -2317,8 +2305,12 @@ const KOLOM_TABEL = [
 ];
 const KOLOM_PREF = 'glt.inventory:kolom';
 function bacaKolomTersembunyi(){
-  try{ const v = JSON.parse(localStorage.getItem(KOLOM_PREF) || '[]'); return new Set(Array.isArray(v) ? v : []); }
-  catch(e){ return new Set(); }
+  /* bawaan: kolom Sumber (nama file, tulisan kecil) disembunyikan; tetap bisa dinyalakan lewat tombol Kolom */
+  try{
+    const raw = localStorage.getItem(KOLOM_PREF);
+    if(raw === null) return new Set(['src']);
+    const v = JSON.parse(raw); return new Set(Array.isArray(v) ? v : []);
+  }catch(e){ return new Set(['src']); }
 }
 let kolomSembunyi = bacaKolomTersembunyi();
 function simpanKolom(){ try{ localStorage.setItem(KOLOM_PREF, JSON.stringify([...kolomSembunyi])); }catch(e){} }
@@ -2328,7 +2320,7 @@ function terapkanKolom(){
   st.textContent = KOLOM_TABEL.map((k,i)=> (!k.kunci && kolomSembunyi.has(k.key))
     ? `#tbl tr>*:nth-child(${i+1}){display:none}` : '').join('\n');
   const btn = document.getElementById('btnKolom');
-  if(btn) btn.textContent = kolomSembunyi.size ? `Kolom (${KOLOM_TABEL.length - kolomSembunyi.size}/${KOLOM_TABEL.length}) ▾` : 'Kolom ▾';
+  if(btn) btn.textContent = 'Kolom ▾';
 }
 function gambarMenuKolom(){
   const m = document.getElementById('menuKolom');
@@ -2374,7 +2366,7 @@ function lipatUnggah(lipat){
     const n = state.inv.length + state.scm.length + state.inb.length + state.out.length;
     const d = document.getElementById('runDate').textContent;
     document.getElementById('unggahRingkasTeks').innerHTML = (n
-      ? `<b>${n} berkas</b> diproses (${state.inv.length} inventory, ${state.scm.length} SCM${state.inb.length ? `, ${state.inb.length} inbound` : ''}${state.out.length ? `, ${state.out.length} outbound` : ''})`
+      ? `<b>${n} berkas</b> diproses (${state.inv.length} Report Adidas/Nike, ${state.scm.length} SCM${state.inb.length ? `, ${state.inb.length} inbound` : ''}${state.out.length ? `, ${state.out.length} outbound` : ''})`
       : 'Hasil dari sesi bersama') + (d && d!=='—' ? ` · dijalankan ${escAttr(d)}` : '');
   }
 }
@@ -2458,7 +2450,7 @@ document.getElementById('btnReset').onclick = ()=>{
 function unduhTemplateCatatan(){
   const rows = visibleRows();
   if(!rows.length){ gltToast('Tidak ada baris yang tampil untuk dijadikan template.', 'warn'); return; }
-  const L = [['PEB','Kategori','No. AJU','Job No.','Status','Qty Inventory','Qty SCM','Selisih','Catatan']];
+  const L = [['PEB','Kategori','No. AJU','Job No.','Status','Qty Report','Qty SCM','Selisih','Catatan']];
   rows.forEach(r=>L.push([r.peb, r.category || '', r.aju || '', r.job || '', STATUS[r.status] ? STATUS[r.status].label : r.status,
     r.qtyInv == null ? '' : r.qtyInv, r.qtyScm == null ? '' : r.qtyScm, r.diff == null ? '' : r.diff, state.notes.get(r.peb) || '']));
   const P = [['PETUNJUK BULK UPLOAD CATATAN INVENTORY'], [],

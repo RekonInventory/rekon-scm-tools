@@ -846,6 +846,8 @@ td.casecell{min-width:120px}
 .ex-sm .val{font-size:16px;margin:0;font-variant-numeric:tabular-nums}
 .ex-sm .sub{font-size:11.5px;color:var(--text-muted)}
 @media (max-width:720px){ .ex-primer{grid-template-columns:1fr} }
+/* elemen ber-atribut hidden selalu tersembunyi, walau kelasnya memberi display lain (dipakai untuk merapikan tampilan) */
+[hidden]{display:none !important}
 </style>
 </head>
 <body data-module="outbound">
@@ -877,7 +879,7 @@ td.casecell{min-width:120px}
 
 <header class="mast">
   <h1>Outbound</h1>
-  <p class="page-desc">Rekonsiliasi data P3BET (CEISA) terhadap laporan Adidas/Nike dan SCM Outbound — dua arah, dengan riwayat run, catatan, dan penyesuaian tersimpan.</p>
+
   <div class="acct" id="acctBar">
     <span id="syncStatus"></span>
     <span id="acctEmail"></span>
@@ -887,15 +889,15 @@ td.casecell{min-width:120px}
 </header>
 
 <div class="official" id="official">
-  <div class="off-brand">
+  <div class="off-brand" hidden>
     <div class="off-title">REKON GLT</div>
     <div class="off-sub">Official Reconciliation Tool</div>
   </div>
   <div class="off-grid">
     <div><span>Run ID</span><b id="offRun">&mdash;</b></div>
     <div><span>Periode</span><b id="offPeriod">&mdash;</b></div>
-    <div><span>Operator</span><b id="offUser" title="Mengikuti nama akun login">&mdash;</b></div>
-    <div><span>Versi</span><b id="offVer">&mdash;</b></div>
+    <div hidden><span>Operator</span><b id="offUser" title="Mengikuti nama akun login">&mdash;</b></div>
+    <div hidden><span>Versi</span><b id="offVer">&mdash;</b></div>
   </div>
   <div class="off-state" id="offState" data-s="ready">READY</div>
 </div>
@@ -906,15 +908,15 @@ td.casecell{min-width:120px}
 <section class="sec" id="secUnggah">
   <div class="sec-head">
     <h2 id="unggahJudul">Masukkan semua berkas</h2>
-    <span class="note" id="unggahNote">Jenis berkas dikenali sendiri dari isinya</span>
+    <span class="note" id="unggahNote"></span>
     <button type="button" class="btn" id="btnGantiBerkas" hidden>Ganti berkas</button>
   </div>
 
   <div class="drop" id="drop" tabindex="0" role="button" aria-label="Pilih semua berkas">
     <div class="drop-in">
       <div class="drop-title">Seret semua berkas ke sini</div>
-      <div class="drop-sub">atau klik untuk memilih &mdash; export CEISA folder 08, recap Nike, inventory Adidas, dan Outbound SCM sekaligus</div>
-      <div class="drop-kinds">
+      <div class="drop-sub">atau klik untuk memilih &mdash; P3BET, recap Nike, data Adidas, Outbound SCM, jadwal K+N</div>
+      <div class="drop-kinds" hidden>
         <span>Export CEISA <b>sheet HEADER</b></span>
         <span>Recap Nike <b>sheet WEEK</b></span>
         <span>Master data Adidas <b>sheet Outbound</b></span>
@@ -929,7 +931,7 @@ td.casecell{min-width:120px}
 
 <div class="runbar">
   <button class="run" id="run" disabled>Jalankan pengecekan</button>
-  <span class="runhint">Selisih qty dinilai tepat, tanpa toleransi. Setiap kali dijalankan, satu Run ID baru dibuat.</span>
+
 </div>
 <div class="prog" id="prog">
   <div class="prog-bar"><i id="progBar"></i></div>
@@ -982,9 +984,9 @@ td.casecell{min-width:120px}
     </div>
     <div class="cards">
       <div class="card" id="cardA">
-        <div class="card-key">Rekon 1</div>
-        <h3>Rekon P3BET = Laporan Adidas / Nike</h3>
-        <div class="basis">Dua arah &middot; kunci nomor container &middot; tanggal stuffing lawan tanggal daftar P3BET</div>
+
+        <h3 title="Dua arah · kunci nomor container · tanggal stuffing lawan tanggal daftar P3BET">P3BET vs Laporan Adidas/Nike</h3>
+
         <div class="score" id="scoreA"><b>—</b></div>
         <div class="finalbadge" id="finalA"></div>
         <div class="tally">
@@ -994,9 +996,9 @@ td.casecell{min-width:120px}
         <div class="totals" id="totalsA"></div>
       </div>
       <div class="card" id="cardB">
-        <div class="card-key">Rekon 2</div>
-        <h3>Rekon P3BET = SCM</h3>
-        <div class="basis">Dua arah &middot; kunci nomor daftar &middot; qty P3BET lawan qty SCM</div>
+
+        <h3 title="Dua arah · kunci nomor daftar · qty P3BET lawan qty SCM">P3BET vs SCM</h3>
+
         <div class="score" id="scoreB"><b>—</b></div>
         <div class="finalbadge" id="finalB"></div>
         <div class="tally">
@@ -1010,7 +1012,7 @@ td.casecell{min-width:120px}
     <div class="exwrap">
       <div class="sec-head">
         <h2>Yang perlu diurus</h2>
-        <span class="note" id="exRingkas">Klik kartu untuk menyaring tabel di bawah</span>
+        <span class="note" id="exRingkas" hidden></span>
       </div>
       <div class="exgrid" id="exGrid"></div>
     </div>
@@ -2832,7 +2834,7 @@ function lipatUnggah(lipat){
   s.classList.toggle("lipat", lipat);
   $("#btnGantiBerkas").hidden = !lipat;
   $("#unggahJudul").textContent = lipat ? "Berkas sumber" : "Masukkan semua berkas";
-  $("#unggahNote").textContent = lipat ? (berkas.length + " berkas dipakai pada pengecekan ini") : "Jenis berkas dikenali sendiri dari isinya";
+  $("#unggahNote").textContent = lipat ? (berkas.length + " berkas dipakai pada pengecekan ini") : "";
 }
 $("#btnGantiBerkas").addEventListener("click", ()=>{ lipatUnggah(false); $("#drop").focus(); });
 
